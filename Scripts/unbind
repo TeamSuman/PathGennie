@@ -1,0 +1,241 @@
+#!/usr/bin/env python
+
+"""
+Command-line script to run a steered molecular dynamics simulation.
+
+This script uses a pre-trained Principal Component Analysis (PCA) model
+to project the simulation coordinates and guide the unbinding of a ligand
+from a protein.
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import argparse
+import os
+import sys
+import numpy as np
+import joblib
+import MDAnalysis as mda
+from MDAnalysis.analysis.distances import distance_array, calc_bonds
+
+def projection(positions, **kwargs):
+    """
+    Projects the atomic positions onto the principal components.
+
+    This function calculates the distance features between the protein and ligand,
+    and then uses a pre-trained PCA model to reduce the dimensionality.
+
+    Args:
+        positions (np.ndarray): Array of atomic positions from the simulation frame.
+        **kwargs: Keyword arguments containing:
+            protein_indices (np.ndarray): Indices of the protein atoms.
+            ligand_indices (np.ndarray): Indices of the ligand atoms.
+            model (object): The loaded PCA model object.
+
+    Returns:
+        tuple: A tuple containing:
+            - The first 4 principal components of the transformed features.
+            - The distance between the center of mass of the protein and ligand.
+            - The minimum distance between any protein and ligand atom.
+    """
+    protein_indices = kwargs.get('protein_indices')
+    ligand_indices = kwargs.get('ligand_indices')
+    model = kwargs.get('model')
+
+    if protein_indices is None or ligand_indices is None or model is None:
+        raise ValueError("Missing required arguments in projection function: protein_indices, ligand_indices, or model.")
+
+    # Extract positions for protein and ligand
+    prot_pos = positions[protein_indices]
+    lig_pos = positions[ligand_indices]
+
+    # Calculate pairwise distances and flatten to create a feature vector
+    my_distance = distance_array(prot_pos, lig_pos)
+    feat = my_distance.ravel()
+
+    # Calculate center of mass distance
+    prot_com = prot_pos.mean(axis=0)
+    lig_com = lig_pos.mean(axis=0)
+    com_dist = calc_bonds(prot_com, lig_com)
+
+    # Transform features using the PCA model and return key metrics
+    # The original code returns the first 4 components, so we slice with [:4]
+    transformed_features = model.transform(feat.reshape(1, -1))
+    return transformed_features[0][:4], com_dist, np.min(my_distance)
+
+def main():
+    """
+    Main function to parse arguments and run the simulation.
+    """
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(
+        description="Run a steered molecular dynamics simulation using a PCA projection.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        '--structure_file',
+        type=str,
+        default="pbcmol.gro",
+        help='Path to the input structure file (e.g., equil.gro).'
+    )
+    parser.add_argument(
+        '--model_file',
+        type=str,
+        default="pca_model.pkl",
+        help='Path to the PCA model file (e.g., output_pca.pkl).'
+    )
+    parser.add_argument(
+        '--module_dir',
+        type=str,
+        default=".",
+        help='Path to directory containing "unbind.py" and "system.py". Defaults to the current directory.'
+    )
+    parser.add_argument(
+        '--ligand_name',
+        type=str,
+        default="LIG",
+        help='Residue name of the ligand (e.g., BAMI).'
+    )
+    parser.add_argument(
+        '--selection_radius',
+        type=float,
+        default=20.0,
+        help='Radius (in Angstroms) to select protein atoms around the ligand.'
+    )
+    parser.add_argument(
+        '--temperature',
+        type=int,
+        default=355,
+        help='Simulation temperature in Kelvin.'
+    )
+    parser.add_argument(
+        '--relax1',
+        type=int,
+        default=5,
+        help='Number of steps for the first relaxation phase.'
+    )
+    parser.add_argument(
+        '--relax2',
+        type=int,
+        default=10,
+        help='Number of steps for the second relaxation phase.'
+    )
+    parser.add_argument('--max_probes', type=int, default=100, help='Number of walkers for the exploration phase.')
+    parser.add_argument('--max_cycles', type=int, default=50000, help='Number of iterations.')
+    parser.add_argument(
+        '--no_save',
+        action='store_true',
+        help='If set, do not save the output trajectory.'
+    )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose output during the simulation.'
+    )
+    args = parser.parse_args()
+
+    # --- Setup Module Path ---
+    # The user-provided module directory is used.
+    module_path = os.path.abspath(args.module_dir)
+    sys.path.insert(0, module_path)
+
+    # --- Import Custom Modules ---
+    # These are imported here after the module path has been set.
+    try:
+        from unbind import Steer
+        from system import Simulation_obj
+    except ImportError:
+        print(f"Error: Could not import 'Steer' or 'Simulation_obj' from '{module_path}'.")
+        print("Please ensure that 'unbind.py' and 'system.py' are in the specified --module_dir.")
+        sys.exit(1)
+
+
+    # --- Determine File Paths ---
+    structure_file = args.structure_file
+    model_file = args.model_file
+
+    # --- File and Parameter Validation ---
+    if not os.path.exists(structure_file):
+        print(f"Error: Structure file not found at '{structure_file}'")
+        sys.exit(1)
+    if not os.path.exists(model_file):
+        print(f"Error: PCA model file not found at '{model_file}'")
+        sys.exit(1)
+
+    # --- Print Configuration ---
+    print("--- Simulation Configuration ---")
+    print(f"Module Path:    {module_path}")
+    print(f"Structure File: {structure_file}")
+    print(f"Model File:     {model_file}")
+    print(f"Ligand Name:    {args.ligand_name}")
+    print(f"Temperature:    {args.temperature} K")
+    print(f"Relaxation 1:   {args.relax1} steps")
+    print(f"Relaxation 2:   {args.relax2} steps")
+    print(f"Save Output:    {not args.no_save}")
+    print(f"Verbose:        {args.verbose}")
+    print("--------------------------------\n")
+
+
+    # --- Simulation Setup ---
+    print("Setting up the simulation...")
+    # Load the molecular system
+    u = mda.Universe(structure_file)
+
+    # Define atom selections based on command-line arguments
+    protein_selection_str = f'around {args.selection_radius} resname {args.ligand_name}'
+    ligand_selection_str = f'resname {args.ligand_name} and not type H'
+
+    protein_nearby_indices = u.select_atoms(protein_selection_str).select_atoms("name CA").indices
+    ligand_indices = u.select_atoms(ligand_selection_str).indices
+
+    if protein_nearby_indices.size == 0:
+        print(f"Error: No protein atoms found with selection: '{protein_selection_str} and name CA'")
+        sys.exit(1)
+    if ligand_indices.size == 0:
+        print(f"Error: No ligand atoms found with selection: '{ligand_selection_str}'")
+        sys.exit(1)
+
+    print(f"Found {len(protein_nearby_indices)} protein atoms and {len(ligand_indices)} ligand atoms.")
+
+    # Load the pre-trained PCA model
+    model = joblib.load(model_file)
+    print(f"Loaded PCA model from '{model_file}'.")
+
+    # Prepare arguments for the projection function
+    projection_kwargs = {
+        "protein_indices": protein_nearby_indices,
+        "ligand_indices": ligand_indices,
+        "model": model
+    }
+
+    # Initialize the simulation and steering objects
+    sim = Simulation_obj()
+    steer = Steer(
+        simulation_obj=sim.simulation,
+        projection_fn=projection,
+        projection_args=projection_kwargs,
+        topology_file_path=structure_file,
+        temperature=args.temperature
+    )
+    print("Steering environment initialized.")
+
+    # --- Run Simulation ---
+    # Get initial positions and convert from Angstroms to nanometers (common for .gro files)
+    initial_positions = u.atoms.positions * 0.1
+
+    print("\nStarting steering simulation...")
+    steer.move(
+        positions=initial_positions,
+        verbose=args.verbose,
+        relax1=args.relax1,
+        relax2=args.relax2,
+        max_try=args.max_probes,
+        max_cycle=args.max_cycles,
+        save=(not args.no_save)
+    )
+    print("\nSimulation finished.")
+
+
+if __name__ == '__main__':
+    main()

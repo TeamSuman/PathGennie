@@ -1,0 +1,24 @@
+nstep       = 500000                            # Number of steps to run
+dt          = 0.002                             # Time-step (ps)
+                                            
+nstout      = 1000                              # Writing output frequency (steps)
+nstdcd      = 50000                             # Writing coordinates trajectory frequency (steps)
+                                            
+coulomb     = PME                               # Electrostatic cut-off method
+ewald_Tol   = 0.0005                            # Ewald error tolerance
+vdw         = Force-switch                      # vdW cut-off method
+r_on        = 1.0                               # Switch-on distance (nm)
+r_off       = 1.2                               # Switch-off distance (nm)
+                                            
+temp        = 300                            # Temperature (K)
+fric_coeff  = 1                                 # Friction coefficient for Langevin dynamics
+
+pcouple     = yes                               # Turn on/off pressure coupling
+p_ref       = 1.0                               # Pressure (Pref or Pxx, Pyy, Pzz; bar)
+p_type      = isotropic                         # MonteCarloBarostat type
+p_freq      = 100                               # Pressure coupling frequency (steps)
+
+cons        = HBonds                            # Constraints method
+                                            
+rest        = no                                # Turn on/off restraints
+

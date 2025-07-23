@@ -1,0 +1,301 @@
+#!/usr/bin/env python
+
+"""
+Command-line script to run a steered molecular dynamics simulation for protein unfolding.
+
+This script uses native contacts (Q-value) and RMSD as collective variables
+to guide the unfolding of a protein from a folded state.
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import argparse
+import os
+import sys
+import numpy as np
+import MDAnalysis as mda
+from MDAnalysis.analysis.distances import distance_array
+from MDAnalysis.analysis.contacts import soft_cut_q
+from itertools import combinations
+from numba import njit
+from typing import Tuple
+
+# --- Helper Classes and Functions from the user script ---
+
+class NativeContacts:
+    """
+    Class for computing native contacts from a reference structure.
+    """
+    def __init__(self, gro_file: str, native_file: str, selection: str = "protein"):
+        """
+        Initializes the NativeContacts object.
+
+        Args:
+            gro_file (str): Path to the topology file (e.g., .gro).
+            native_file (str): Path to the native structure file.
+            selection (str): Atom selection string for the protein.
+        """
+        self.selection = selection
+        self.universe = mda.Universe(gro_file)
+        self.native_universe = mda.Universe(native_file)
+
+        self.heavy_atoms = self.universe.select_atoms(f"{selection} and not type H")
+        self.heavy_indices = self.heavy_atoms.indices
+
+        self.heavy_pairs = self._generate_heavy_pairs()
+        self.native_positions = self.native_universe.select_atoms(selection).positions.astype(np.float32)
+        self.native_pairs, self.native_distances = self._calculate_native_pairs_and_distances()
+
+    def _generate_heavy_pairs(self) -> np.ndarray:
+        """Generates pairs of heavy atoms separated by more than 3 residues."""
+        pairs = [
+            (i, j) for i, j in combinations(range(len(self.heavy_atoms)), 2)
+            if abs(self.heavy_atoms[i].resid - self.heavy_atoms[j].resid) > 3
+        ]
+        # Map local indices back to global indices
+        global_pairs = np.array([[self.heavy_indices[i], self.heavy_indices[j]] for i, j in pairs], dtype=np.int32)
+        return global_pairs
+
+    def _calculate_native_pairs_and_distances(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Calculates native contacts based on a distance cutoff in the native structure."""
+        ref_heavy_atoms = self.native_universe.select_atoms(f"{self.selection} and not type H")
+
+        # Ensure the number of heavy atoms match
+        if len(self.heavy_atoms) != len(ref_heavy_atoms):
+            raise ValueError("Mismatch in number of heavy atoms between universe and native reference.")
+
+        all_distances = distance_array(ref_heavy_atoms.positions, ref_heavy_atoms.positions)
+
+        pairs, distances = [], []
+        # Iterate through pairs of local indices
+        local_pairs = combinations(range(len(ref_heavy_atoms)), 2)
+        for i, j in local_pairs:
+             # Check residue separation
+            if abs(ref_heavy_atoms[i].resid - ref_heavy_atoms[j].resid) > 3:
+                # Check distance cutoff
+                if all_distances[i, j] < 4.5:
+                    # Store global indices
+                    pairs.append([ref_heavy_atoms.indices[i], ref_heavy_atoms.indices[j]])
+                    distances.append(all_distances[i, j])
+
+        return np.array(pairs, dtype=np.int32), np.array(distances, dtype=np.float32)
+
+from MDAnalysis.lib.distances import calc_bonds # Add this import
+# def getQ(positions: np.ndarray, box: np.ndarray, heavy_pairs: np.ndarray,
+#          ref_distance: np.ndarray) -> float:
+#     """
+#     Calculate native contact fraction (Q) using the soft_cut_q method.
+#     """
+#     all_distances = distance_array(positions, positions, box)
+#     test_distances = all_distances[heavy_pairs[:, 0], heavy_pairs[:, 1]]
+#     return soft_cut_q(test_distances, ref_distance, beta=5.0, lambda_constant=1.8)
+
+
+def getQ(positions: np.ndarray, box: np.ndarray, heavy_pairs: np.ndarray,
+         ref_distance: np.ndarray) -> float:
+    """
+    Calculate native contact fraction (Q) using the soft_cut_q method.
+
+    This version is optimized to only calculate distances for the pairs of
+    atoms involved in native contacts, avoiding a full O(N^2) distance matrix
+    calculation.
+    """
+    # Extract the coordinates of the first and second atom in each native pair
+    coords1 = positions[heavy_pairs[:, 0]]
+    coords2 = positions[heavy_pairs[:, 1]]
+
+    # Use the optimized `calc_bonds` to compute distances only for the given pairs
+    test_distances = calc_bonds(coords1, coords2, box=box)
+
+    return soft_cut_q(test_distances, ref_distance, beta=5.0, lambda_constant=1.8)
+
+
+@njit(fastmath=True)
+def fit_rms(ref_coords: np.ndarray, coords: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Perform optimal superposition using Kabsch algorithm.
+    This version avoids array.mean(axis=...) for Numba compatibility.
+    """
+    # Manually calculate mean for Numba compatibility
+    ref_center = ref_coords.sum(axis=0) / ref_coords.shape[0]
+    coords_center = coords.sum(axis=0) / coords.shape[0]
+
+    ref_coords_centered = ref_coords - ref_center
+    coords_centered = coords - coords_center
+
+    C = coords_centered.T @ ref_coords_centered
+    V, _, Wt = np.linalg.svd(C)
+    d = np.linalg.det(V) * np.linalg.det(Wt)
+    if d < 0:
+        V[:, -1] = -V[:, -1]
+
+    rotation = V @ Wt
+    return coords_center, rotation, ref_center
+
+@njit(fastmath=True)
+def set_rmsd(coords1: np.ndarray, coords2: np.ndarray) -> float:
+    """
+    Compute RMSD after optimal superposition.
+    """
+    c_trans, rotation, ref_trans = fit_rms(coords1, coords2)
+    aligned_coords2 = (coords2 - c_trans) @ rotation + ref_trans
+    return np.sqrt(np.mean(np.sum((coords1 - aligned_coords2) ** 2, axis=1)))
+
+def project(positions, **kwargs):
+    """
+    Projection function to calculate RMSD and Q-value.
+    """
+    heavy_indices = kwargs.get('heavy_index')
+    ref_positions = kwargs.get('ref_positions')
+    box = kwargs.get('box')
+    pairs = kwargs.get('pairs')
+    ref_distances = kwargs.get('ref_distances')
+
+    if heavy_indices is None or ref_positions is None:
+        raise ValueError("heavy_index and ref_positions must be provided via kwargs")
+
+    current_heavy_positions = positions[heavy_indices]
+
+    # Ensure matching dtypes for RMSD calculation
+    current_heavy_positions = current_heavy_positions.astype(np.float64)
+    ref_positions = ref_positions.astype(np.float64)
+
+    rmsd = set_rmsd(ref_positions, current_heavy_positions)
+    q_value = getQ(positions, box, pairs, ref_distances)
+
+    # Return a numpy array of the collective variables
+    return np.array([rmsd, q_value])
+
+
+def main():
+    """
+    Main function to parse arguments and run the unfolding simulation.
+    """
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(
+        description="Run a steered molecular dynamics simulation for protein unfolding.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument('--ref_config', type=str, required=True, help='Path to the reference/native structure file (PDB, GRO, etc.).')
+    parser.add_argument('--start_config', type=str, required=True, help='Path to the starting structure file for the simulation.')
+    parser.add_argument('--trajectory', type=str, default=None, help='(Optional) Path to an input trajectory file (.xtc, .dcd) to use as the starting point.')
+    parser.add_argument('--module_dir', type=str, default=".", help='Path to directory containing "unfold.py" and "system.py".')
+    parser.add_argument('--temperature', type=int, default=355, help='Simulation temperature in Kelvin.')
+    parser.add_argument('--relax1', type=int, default=5, help='Number of steps for the first relaxation phase.')
+    parser.add_argument('--relax2', type=int, default=10, help='Number of steps for the second relaxation phase.')
+    parser.add_argument('--max_probes', type=int, default=100, help='Number of walkers for the exploration phase.')
+    parser.add_argument('--max_cycles', type=int, default=50000, help='Number of iterations.')
+    parser.add_argument(
+        '--no_save',
+        action='store_true',
+        help='If set, do not save the output trajectory.'
+    )
+    parser.add_argument(
+        '--save_frequency',
+        type=int, default=50,
+        help='save the coords in frquency in output trajectory.'
+    )
+    parser.add_argument('--no_change_threshold', type=float, default=0.01, help='Threshold for stopping if collective variables do not change.')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output during the simulation.')
+    args = parser.parse_args()
+
+    # --- Setup Module Path ---
+    module_path = os.path.abspath(args.module_dir)
+    sys.path.insert(0, module_path)
+
+    try:
+        from unfold import Steer
+        # Assuming the simulation object is in a file named system.py
+        from system import Simulation_obj
+    except ImportError as e:
+        print(f"Error: Could not import 'Steer' or 'Simulation_obj' from '{module_path}'.")
+        print(f"Details: {e}")
+        print("Please ensure that 'unfold.py' and 'system.py' (containing 'ImplicitOMM') are in the specified --module_dir.")
+        sys.exit(1)
+
+    # --- File Validation ---
+    for f in [args.ref_config, args.start_config]:
+        if not os.path.exists(f):
+            print(f"Error: Input file not found at '{f}'")
+            sys.exit(1)
+    if args.trajectory and not os.path.exists(args.trajectory):
+        print(f"Error: Trajectory file not found at '{args.trajectory}'")
+        sys.exit(1)
+
+    # --- Print Configuration ---
+    print("--- Unfolding Simulation Configuration ---")
+    print(f"Module Path:      {module_path}")
+    print(f"Reference Config: {args.ref_config}")
+    print(f"Start Config:     {args.start_config}")
+    if args.trajectory:
+        print(f"Input Trajectory: {args.trajectory}")
+    print(f"Temperature:      {args.temperature} K")
+    print(f"Relaxation 1:     {args.relax1} steps")
+    print(f"Relaxation 2:     {args.relax2} steps")
+    print(f"Max Probes:     {args.max_probes}")
+    print("----------------------------------------\n")
+
+    # --- Simulation Setup ---
+    print("Setting up the simulation...")
+    # Load reference to calculate native contacts and reference positions
+    native_contacts = NativeContacts(args.start_config, args.ref_config)
+
+    ref_universe = mda.Universe(args.ref_config)
+    ref_heavy_sel = ref_universe.select_atoms("protein and not type H")
+    ref_positions = ref_heavy_sel.positions
+    heavy_indices = ref_heavy_sel.indices
+
+    # Prepare arguments for the projection function
+    projection_args = {
+        "box": ref_universe.dimensions,
+        "pairs": native_contacts.native_pairs,
+        "ref_distances": native_contacts.native_distances,
+        "ref_positions": ref_positions,
+        "heavy_index": heavy_indices
+    }
+    print(f"Calculated {len(native_contacts.native_pairs)} native contacts from reference.")
+
+    # --- Load Starting Positions ---
+    if args.trajectory:
+        # Load from trajectory if provided
+        universe = mda.Universe(args.start_config, args.trajectory)
+        universe.trajectory[-1] # Move to the last frame
+        print(f"Loading initial positions from last frame of '{args.trajectory}'.")
+    else:
+        # Otherwise, load from the start_config file
+        universe = mda.Universe(args.start_config)
+        print(f"Loading initial positions from '{args.start_config}'.")
+
+    # Convert positions from Angstroms to nanometers
+    initial_positions = universe.atoms.positions * 0.1
+
+    # --- Steered Simulation Setup ---
+    sim_obj = Simulation_obj()
+    steer = Steer(
+        simulation_obj=sim_obj.simulation,
+        projection_fn=project,
+        projection_args=projection_args,
+        topology_file_path=args.start_config,
+        temperature=args.temperature
+    )
+    print("Steering environment initialized.")
+
+    # --- Run Simulation ---
+    print("\nStarting unfolding simulation...")
+    steer.move(
+        positions=initial_positions,
+        verbose=args.verbose,
+        relax1=args.relax1,
+        relax2=args.relax2,
+        #no_change_threshold=args.no_change_threshold,
+        save=(not args.no_save),
+        save_frequency=args.save_frequency,
+        max_try=args.max_probes,
+        max_cycle=args.max_cycles
+    )
+    print("\nSimulation finished.")
+
+
+if __name__ == '__main__':
+    main()
