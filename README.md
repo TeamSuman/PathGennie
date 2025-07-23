@@ -48,10 +48,10 @@ Clone the repository and set up the Conda environment:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/pathgennie.git
+git clone https://github.com/dmighty007/PathGennie.git    
 
 # Navigate to the project folder
-cd pathgennie
+cd PathGennie
 
 # Create and activate the environment
 conda env create -f environment.yml
