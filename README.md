@@ -3,7 +3,7 @@
 This repository contains code and examples for the article:
 **"Rapid Generation of Rare Event Pathways Using Direction-Guided Adaptive Sampling: From Ligand Unbinding to Protein (Un)Folding."**
 
-PathGennie is a general-purpose **steering framework** for guiding molecular simulations along data-driven collective variables (CVs) to rapidly sample rare event transitions such as:
+PathGennie is a general-purpose **steering framework** for guiding molecular simulations along data-driven(or physical) collective variables (CVs) to rapidly sample rare event transitions such as:
 
 * Ligand **unbinding**
 * Protein **folding and unfolding**
