@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+
+"""
+Command-line script to run a steered molecular dynamics simulation for protein folding.
+
+This script uses native contacts (Q-value) and RMSD as collective variables
+to guide the folding of a protein towards its native state.
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import argparse
+import os
+import sys
+import numpy as np
+from util import load_projection_args
+import MDAnalysis as mda
+
+# --- Helper Classes and Functions ---
+
+def main():
+    """
+    Main function to parse arguments and run the folding simulation.
+    """
+    parser = argparse.ArgumentParser(
+        description="Run a steered molecular dynamics simulation for protein folding.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument('--start_config', type=str, required=True, help='Path to the starting (unfolded) structure file.')
+    parser.add_argument('--trajectory', type=str, default=None, help='(Optional) Path to an input trajectory file (.xtc, .dcd) to use as the starting point.')
+    parser.add_argument('--module_dir', type=str, default=".", help='Path to directory containing "fold.py" and "system.py".')
+    parser.add_argument('--target_projection', type=float, nargs=2, default=[0.0, 1.0], help='Target projection values for [RMSD, Q-value].')
+    parser.add_argument('--temperature', type=int, default=355, help='Simulation temperature in Kelvin.')
+    parser.add_argument('--relax1', type=int, default=5, help='Number of steps for the first relaxation phase.')
+    parser.add_argument('--relax2', type=int, default=10, help='Number of steps for the second relaxation phase.')
+    parser.add_argument('--max_probes', type=int, default=100, help='Number of walkers for the exploration phase.')
+    parser.add_argument('--max_cycles', type=int, default=50000, help='Number of iterations.')
+    parser.add_argument('--no_change_threshold', type=float, default=0.01, help='Threshold for stopping if collective variables do not change.')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output during the simulation.')
+    parser.add_argument('--projection_args', type=str, default="project.json", help='Path to a JSON file containing projection arguments.')
+    args = parser.parse_args()
+
+    module_path = os.path.abspath(args.module_dir)
+    sys.path.insert(0, module_path)
+
+    try:
+        from fold import Steer
+        from system import Simulation_obj
+        from projection import project
+    except ImportError as e:
+        print(f"Error: Could not import 'Steer' or 'Simulation_obj' from '{module_path}'.")
+        print(f"Details: {e}")
+        print("Please ensure that 'fold.py' and 'system.py' are in the specified --module_dir.")
+        sys.exit(1)
+
+    # for f in [args.ref_config, args.start_config]:
+    #     if not os.path.exists(f):
+    #         print(f"Error: Input file not found at '{f}'")
+    #         sys.exit(1)
+
+    print("--- Folding Simulation Configuration ---")
+    print(f"Module Path:       {module_path}")
+    # print(f"Reference Config:  {args.ref_config}")
+    print(f"Start Config:      {args.start_config}")
+    print(f"Temperature:       {args.temperature} K")
+    print(f"Relaxation 1:   {args.relax1} steps")
+    print(f"Relaxation 2:   {args.relax2} steps")
+    print(f"Max Probes:     {args.max_probes}")
+    print("--------------------------------------\n")
+
+    print("Setting up the simulation...")
+
+    if args.projection_args:
+        projection_args = load_projection_args(args.projection_args)
+        print("Loaded projection_args from file.")
+    else:
+        projection_args = {}
+    #projection_args = {}
+
+    if args.trajectory:
+        universe = mda.Universe(args.start_config, args.trajectory)
+        universe.trajectory[-1]
+        print(f"Loading initial positions from last frame of '{args.trajectory}'.")
+    else:
+        universe = mda.Universe(args.start_config)
+        print(f"Loading initial positions from '{args.start_config}'.")
+
+    initial_positions = universe.atoms.positions * 0.1
+
+    sim_obj = Simulation_obj()
+    steer = Steer(
+        simulation_obj=sim_obj.simulation,
+        projection_fn=project,
+        projection_args=projection_args,
+        topology_file_path=args.start_config,
+        target_projection=np.array(args.target_projection),
+        temperature=args.temperature
+    )
+    print("Steering environment initialized.")
+
+    print("\nStarting folding simulation...")
+    steer.move(
+        initial_positions=initial_positions,
+        verbose=args.verbose,
+        relax1_steps=args.relax1,
+        relax2_steps=args.relax2,
+        max_probes_per_cycle = args.max_probes,
+        max_cycles = args.max_cycles
+    )
+    print("\nSimulation finished.")
+
+if __name__ == '__main__':
+    main()
