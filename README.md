@@ -1,7 +1,8 @@
 # 🧬 PathGennie: Rapid Rare Event Pathway Generator
 
 This repository contains code and examples for the article:
-**"Rapid Generation of Rare Event Pathways Using Direction-Guided Adaptive Sampling: From Ligand Unbinding to Protein (Un)Folding."**
+***“Rapid Generation of Rare Event Pathways Using Direction-Guided Adaptive Sampling: From Ligand Unbinding to Protein (Un)Folding.”***
+📄 **DOI:** [https://doi.org/10.1021/acs.jctc.5c01244](https://doi.org/10.1021/acs.jctc.5c01244)
 
 PathGennie is a general-purpose **steering framework** for guiding molecular simulations along data-driven(or physical) collective variables (CVs) to rapidly sample rare event transitions such as:
 
