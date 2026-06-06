@@ -22,7 +22,7 @@ pathgennie:
     max_trial: 10
     # Number of independent tau1 walkers to run at the same time.
     # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
-    tau1_workers: 4
+    tau1_workers: 10
     # max_cycle: Maximum escape cycles before stopping
     max_cycle: 5000
     # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)

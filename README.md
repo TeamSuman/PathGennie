@@ -31,7 +31,7 @@ for the kinds of paths PathGennie produces.
   <tr>
     <td width="33%" align="center">
       <!-- <strong>Host-guest unbinding</strong><br> -->
-      <video src="assets/unbind.mp4" autoplay muted loop playsinline controls width="100%"></video>
+      <img src="assets/unbind.webp" width="100%"></img>
     </td>
     <td width="33%" align="center">
       <!-- <strong>Reactive path example</strong><br> -->
