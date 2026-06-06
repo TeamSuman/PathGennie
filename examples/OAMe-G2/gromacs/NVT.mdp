@@ -1,0 +1,67 @@
+define		=
+
+; Integrator stuff
+integrator = md ; steep or md 
+dt = 0.002
+nsteps =  2500 ; -1 no maximum
+init-step = 0 ; 
+continuation = no 
+
+; neighbour search
+cutoff-scheme = verlet ; the other is bad
+nst-list = 10  ;frequency of update of neighbours, with verlet-buf-tol its a minimum
+verlet-buffer-tolerance = 0.005 ; kj/mol/ps might need to put -1. 
+ns-type = grid
+
+
+; Pbc 
+pbc = xyz ; xyz or xy 
+
+; Vdw 
+rvdw = 1.0
+vdwtype = cut-off ; PME or User to look for table /user 
+DispCorr = EnerPres ; corrections to energy and pressure or No
+
+;Electrostatic
+coulombtype = PME ; User if look for table
+rcoulomb = 1.0
+pme-order =  4
+fourierspacing =  0.1
+ewald-rtol = 1.e-5 ; splitting between real and reciprocal
+ewald-geometry = 3d ; 3d or 3dc
+
+
+; T and P 
+tcoupl = v-rescale ; none, nose-hoover, v-rescale
+nsttcouple = 10 ; 10 if not used 
+tc-grps = OCB MOL  Water_and_ions
+tau-t = 0.1 0.1 0.1 ; ps
+ref-t = 300 300 300 ; K 
+pcoupl =  no ;
+pcoupltype = isotropic ;
+compressibility     = 4.5e-5	            ; isothermal compressibility of water, bar^-1
+refcoord-scaling = com
+tau-p = 5.0 ; ps 
+ref-p = 1.0 ; bar
+
+; Constraints
+constraints = all-bonds ; constraints  distances
+constraint-algorithm = LINCS ; or SHAKE
+lincs_iter	            = 1
+lincs_order	            = 4
+
+;Generate velocities
+gen_vel		= yes		; assign velocities from Maxwell distribution
+gen_temp	= 300		; temperature for Maxwell distribution
+gen_seed	= -1		; generate a random seed
+
+
+; OUTPUT
+; Output control
+nstenergy	= 0		; save energies 
+nstlog		= 0		; update log file every 
+nstxout-compressed  = 100000      ; save compressed coordinates every 10.0 ps
+                                ; nstxout-compressed replaces nstxtcout
+
+; COM removal . There are more options like removing from groups or the frequency
+nstcalcenergy = 500

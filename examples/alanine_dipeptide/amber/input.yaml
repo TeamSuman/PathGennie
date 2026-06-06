@@ -1,0 +1,41 @@
+amber:
+    topology: ala_dipeptide.prmtop
+    initial_restart: ala_dipeptide_equilibrated.rst7
+    executable: /home/dm/Soft/pmemd26/bin/pmemd
+
+pathgennie:
+    mode: target
+    target_projection: [60.0, 40.0]
+    tau1_steps: 2
+    tau2_steps: 4
+    max_trial: 10
+    tau1_workers: 10
+    max_cycle: 5000
+    save_freq: 10
+    sigma: 0.1
+    temperature: 300
+
+md:
+    system: explicit
+    controls:
+        dt: 0.001
+        ntc: 2
+        ntf: 2
+        ntb: 1
+        ntp: 0
+        cut: 8.0
+        ntpr: 0
+        ntwx: 0
+        ntwr: 10000
+
+projection:
+    module: phi_psi
+    function: phi_psi_cv
+
+convergence:
+    module: phi_psi
+    function: reached_phi_psi
+    target: [60.0, 40.0]
+    tolerance: 15.0
+
+workdir: pathgennie_amber_run

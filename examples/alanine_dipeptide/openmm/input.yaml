@@ -1,0 +1,32 @@
+openmm:
+    topology: ala_dipeptide.prmtop
+    initial_restart: ala_dipeptide_equilibrated.rst7
+    platform: CPU
+
+pathgennie:
+    mode: target
+    target_projection: [60.0, 40.0]
+    tau1_steps: 2
+    tau2_steps: 4
+    max_trial: 10
+    max_cycle: 1000
+    save_freq: 5
+    sigma: 0.1
+    temperature: 300
+    verbosity: 1
+
+md:
+    timestep_ps: 0.002
+    friction_per_ps: 1.0
+
+projection:
+    module: phi_psi
+    function: phi_psi_cv
+
+convergence:
+    module: phi_psi
+    function: reached_phi_psi
+    target: [60.0, 40.0]
+    tolerance: 10.0
+
+workdir: pathgennie_openmm_run

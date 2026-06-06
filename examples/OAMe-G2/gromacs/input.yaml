@@ -1,0 +1,63 @@
+# input.yaml - PathGennie OAMe-G2 unbinding configuration
+# Goal: Guide OCB/MOL host-guest dissociation using COM-COM distance
+
+gromacs:
+    topology: topol.top
+    initial_structure: box.gro
+    mdp: NVT.mdp
+    executable: /home/dm/Soft/GMX26/bin/gmx
+    reference_template: box.gro
+    mdrun_args:
+        - -nb
+        - gpu
+        - -bonded
+        - gpu
+        - -pin
+        - "on"
+        - -n
+        - index.ndx
+    # For an MPI Amber executable, use e.g.:
+    # executable: /path/to/pmemd.MPI
+    # mpi_launcher: mpirun
+    # mpi_ranks: 4
+
+pathgennie:
+    mode: escape
+    # tau1_steps: MD sampling segments (explore local conformations)
+    tau1_steps: 5
+    # tau2_steps: MD continuation from selected state (commit to progress)
+    tau2_steps: 10
+    # max_trial: Number of parallel trajectories per cycle
+    max_trial: 10
+    # Number of independent tau1 walkers to run at the same time.
+    # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
+    tau1_workers: 1
+    # max_cycle: Maximum escape cycles before stopping
+    max_cycle: 5000
+    # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)
+    # For unfolding, use moderate value to balance exploration vs exploitation
+    sigma: 0.05
+    # temperature: MD simulation temperature (K)
+    temperature: 300
+
+md:
+    system: explicit
+    controls:
+        dt: 0.002
+
+projection:
+    # CV: mass-weighted COM-COM distance between host and guest residues
+    module: projection
+    function: com_com_distance_cv
+    group_a_resname: OCB
+    group_b_resname: MOL
+
+convergence:
+    # Check if OCB-MOL COM-COM distance exceeds threshold -> dissociated/unbound
+    module: projection
+    function: dissociated
+    group_a_resname: OCB
+    group_b_resname: MOL
+    threshold: 10.0
+
+workdir: pathgennie_run

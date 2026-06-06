@@ -1,0 +1,45 @@
+# input.yaml - PathGennie CLN025 target-mode configuration for GROMACS
+
+gromacs:
+    topology: chignolin.top
+    initial_structure: unfolded.gro
+    reference_template: unfolded.gro
+    mdp: md.mdp
+    executable: /home/dm/Soft/GMX26/bin/gmx
+    maxwarn: 2
+    mdrun_args:
+        - -ntmpi
+        - "1"
+        - -ntomp
+        - "1"
+        - -nb
+        - gpu
+        - -pin
+        - "on"
+
+pathgennie:
+    mode: target
+    target_projection: [5.0]
+    tau1_steps: 5
+    tau2_steps: 10
+    max_trial: 10
+    tau1_workers: 10
+    max_cycle: 1000
+    save_freq: 10
+    sigma: 0.05
+    temperature: 275
+
+projection:
+    module: projection
+    function: end_to_end_cv
+    start_index: 4
+    end_index: 132
+
+convergence:
+    module: projection
+    function: end_to_end_escaped
+    start_index: 4
+    end_index: 132
+    threshold: 5.0
+
+workdir: pathgennie_gmx_run

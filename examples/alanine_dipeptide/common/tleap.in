@@ -1,0 +1,7 @@
+source leaprc.protein.ff14SB
+source leaprc.water.tip3p
+mol = sequence { ACE ALA NME }
+solvateBox mol TIP3PBOX 8.0
+saveamberparm mol ala_dipeptide.prmtop ala_dipeptide_initial.rst7
+savepdb mol ala_dipeptide_initial.pdb
+quit
