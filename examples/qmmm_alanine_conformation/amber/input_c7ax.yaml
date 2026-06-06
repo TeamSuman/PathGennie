@@ -1,0 +1,55 @@
+amber:
+    topology: qmmm_ala.prmtop
+    initial_restart: qmmm_ala_equilibrated.rst7
+    executable: /home/dm/Soft/miniconda3/envs/pg/bin/sander
+
+pathgennie:
+    mode: target
+    target_projection: [60.0, 40.0]
+    tau1_steps: 2
+    tau2_steps: 4
+    max_trial: 20
+    tau1_workers: 20
+    max_cycle: 5000
+    save_freq: 10
+    sigma: 0.1
+    temperature: 300
+
+md:
+    system: explicit
+    controls:
+        dt: 0.0005
+        ntc: 1
+        ntf: 1
+        ntb: 1
+        ntp: 0
+        cut: 8.0
+        ntpr: 1000
+        ntwx: 0
+        ntwr: 10000
+        ntxo: 1
+        ifqnt: 1
+    extra_text: |
+        &qmmm
+          qmmask=':1-3',
+          qmcharge=0,
+          qm_theory='PM3',
+          qmcut=8.0,
+        /
+
+projection:
+    module: phi_psi
+    function: phi_psi_cv
+
+convergence:
+    module: phi_psi
+    function: reached_phi_psi
+    target: [60.0, 40.0]
+    tolerance: 25.0
+
+output:
+    trajectory: qmmm_ala_c7ax_path.nc
+    metrics: qmmm_ala_c7ax_metrics.csv
+    wrap_pbc: true
+
+workdir: pathgennie_qmmm_c7ax_run

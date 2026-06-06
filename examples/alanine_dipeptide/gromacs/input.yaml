@@ -1,0 +1,40 @@
+gromacs:
+    topology: ala_dipeptide.top
+    initial_structure: ala_dipeptide_equilibrated.gro
+    reference_template: ala_dipeptide_equilibrated.gro
+    mdp: md.mdp
+    executable: /home/dm/Soft/GMX26/bin/gmx
+    maxwarn: 2
+    mdrun_args:
+        - -ntmpi
+        - "1"
+        - -ntomp
+        - "1"
+        - -nb
+        - cpu
+        - -pin
+        - "off"
+
+pathgennie:
+    mode: target
+    target_projection: [-60.0, -40.0]
+    tau1_steps: 2
+    tau2_steps: 4
+    max_trial: 10
+    tau1_workers: 10
+    max_cycle: 1000
+    save_freq: 10
+    sigma: 0.1
+    temperature: 300
+
+projection:
+    module: projection
+    function: phi_psi_cv
+
+convergence:
+    module: projection
+    function: reached_phi_psi
+    target: [-60.0, -40.0]
+    tolerance: 20.0
+
+workdir: pathgennie_gmx_run

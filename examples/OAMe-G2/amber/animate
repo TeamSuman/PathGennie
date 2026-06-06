@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+from pathlib import Path
+
+
+def run(cmd):
+    print(" ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def images_to_animation(
+    pattern: str,
+    output: str,
+    fps: int = 20,
+    quality: int = 95,
+    scale: int | None = None,
+    overwrite: bool = True,
+):
+    ext = Path(output).suffix.lower()
+
+    ffmpeg = ["ffmpeg"]
+    if overwrite:
+        ffmpeg.append("-y")
+
+    input_args = [
+        "-framerate",
+        str(fps),
+        "-pattern_type",
+        "glob",
+        "-i",
+        pattern,
+    ]
+
+    vf = []
+    if scale:
+        vf.append(f"scale={scale}:-1:flags=lanczos")
+
+    if ext == ".gif":
+        palette = "_palette.png"
+
+        palette_vf = ",".join(vf + ["palettegen"])
+
+        run(
+            ffmpeg
+            + input_args
+            + [
+                "-vf",
+                palette_vf,
+                palette,
+            ]
+        )
+
+        gif_filter = ",".join(vf + ["paletteuse"])
+
+        run(
+            ffmpeg
+            + input_args
+            + [
+                "-i",
+                palette,
+                "-lavfi",
+                gif_filter,
+                output,
+            ]
+        )
+
+        Path(palette).unlink(missing_ok=True)
+
+    elif ext == ".webp":
+        cmd = (
+            ffmpeg
+            + input_args
+            + (
+                ["-vf", ",".join(vf)]
+                if vf
+                else []
+            )
+            + [
+                "-c:v",
+                "libwebp_anim",
+                "-quality",
+                str(quality),
+                "-compression_level",
+                "4",
+                "-loop",
+                "0",
+                output,
+            ]
+        )
+
+        run(cmd)
+
+    elif ext == ".mp4":
+        cmd = (
+            ffmpeg
+            + input_args
+            + (
+                ["-vf", ",".join(vf)]
+                if vf
+                else []
+            )
+            + [
+                "-c:v",
+                "libx264",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                output,
+            ]
+        )
+
+        run(cmd)
+
+    else:
+        raise ValueError(
+            f"Unsupported format: {ext}. "
+            "Supported: .gif, .webp, .mp4"
+        )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert image sequences to GIF/WebP/MP4"
+    )
+
+    parser.add_argument(
+        "pattern",
+        help="Input glob pattern (e.g. '*.png')",
+    )
+
+    parser.add_argument(
+        "output",
+        help="Output file (.gif, .webp, .mp4)",
+    )
+
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=20,
+        help="Frame rate (default: 20)",
+    )
+
+    parser.add_argument(
+        "--quality",
+        type=int,
+        default=95,
+        help="WebP quality (default: 95)",
+    )
+
+    parser.add_argument(
+        "--scale",
+        type=int,
+        help="Resize width while preserving aspect ratio",
+    )
+
+    args = parser.parse_args()
+
+    images_to_animation(
+        pattern=args.pattern,
+        output=args.output,
+        fps=args.fps,
+        quality=args.quality,
+        scale=args.scale,
+    )
+
+
+if __name__ == "__main__":
+    main()
