@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pathgennie"
+dynamic = ["version"]
+description = "Adaptive short-burst molecular dynamics path generation for AMBER, GROMACS, and OpenMM."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Dibyendu Maity" }
+]
+keywords = [
+  "molecular-dynamics",
+  "adaptive-sampling",
+  "amber",
+  "gromacs",
+  "openmm"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Physics"
+]
+dependencies = [
+  "numpy",
+  "PyYAML",
+  "tqdm",
+  "MDAnalysis",
+  "OpenMM",
+]
+
+[project.optional-dependencies]
+examples = [
+  "ParmEd",
+]
+
+[project.scripts]
+pathgennie-amber = "pathgennie.backends.amber.pg_amber:main"
+pathgennie-gromacs = "pathgennie.backends.gromacs.pg_gmx:main"
+pathgennie-openmm = "pathgennie.backends.openmm.pg_openmm:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "pathgennie.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["pathgennie*"]

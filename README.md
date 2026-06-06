@@ -74,12 +74,16 @@ conda env create -f environment.yml
 conda activate pathgennie
 ```
 
-The examples import `pathgennie` directly from the repository. Run commands
-from this checkout, or add the repository root to `PYTHONPATH` when launching
-scripts from another directory:
+Install the package from this checkout:
 
 ```bash
-export PYTHONPATH="$PWD:${PYTHONPATH}"
+pip install .
+```
+
+For development, install it in editable mode:
+
+```bash
+pip install -e ".[examples]"
 ```
 
 Backend executables are configured per example. Update paths such as
