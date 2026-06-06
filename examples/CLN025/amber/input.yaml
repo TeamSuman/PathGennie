@@ -1,0 +1,57 @@
+# input.yaml - PathGennie CLN025 escape mode configuration
+# Goal: Guide protein from folded to unfolded state using adaptive sampling
+
+amber:
+    topology: chignolin.prmtop
+    initial_restart: unfolded.rst7
+    mdin: mdin
+    executable: /home/dm/Soft/pmemd26/bin/pmemd
+    # For an MPI Amber executable, use e.g.:
+    # executable: /path/to/pmemd.MPI
+    # mpi_launcher: mpirun
+    # mpi_ranks: 4
+
+pathgennie:
+    mode: target
+    target_projection: [5.0]
+    # tau1_steps: MD sampling segments (explore local conformations)
+    tau1_steps: 5
+    # tau2_steps: MD continuation from selected state (commit to progress)
+    tau2_steps: 10
+    # max_trial: Number of parallel trajectories per cycle
+    max_trial: 10
+    # Number of independent tau1 walkers to run at the same time.
+    # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
+    tau1_workers: 4
+    # max_cycle: Maximum escape cycles before stopping
+    max_cycle: 5000
+    # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)
+    # For unfolding, use moderate value to balance exploration vs exploitation
+    sigma: 0.05
+    # temperature: MD simulation temperature (K)
+    temperature: 275
+
+md:
+    system: implicit
+    controls:
+        dt: 0.004
+        ntpr: 100
+        ntwx: 0
+        ntwr: 10000
+
+projection:
+    # CV: terminal CA-to-CA end-to-end distance (increases as protein unfolds)
+    module: projection
+    function: end_to_end_cv
+    start_index: 4
+    end_index: 132
+
+convergence:
+    # Check if terminal CA-to-CA distance exceeds threshold -> consider escaped/unfolded
+    module: projection
+    function: end_to_end_escaped
+    start_index: 4
+    end_index: 132
+    threshold: 5.0
+
+workdir: pathgennie_run
