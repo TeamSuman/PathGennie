@@ -31,7 +31,7 @@ for the kinds of paths PathGennie produces.
   <tr>
     <td width="33%" align="center">
       <!-- <strong>Host-guest unbinding</strong><br> -->
-      <img src="assets/unbind.webp" width="100%"></img>
+      <img src="assets/unbind.gif" alt="Host-guest unbinding animation" width="100%">
     </td>
     <td width="33%" align="center">
       <!-- <strong>Reactive path example</strong><br> -->
@@ -58,7 +58,8 @@ examples/
   OAMe-G2/
   qmmm_alanine_conformation/
 assets/
-  unbind.mp4
+  unbind.gif
+  unbind.webp
   reaction.webp
   movie.webp
 environment.yml
