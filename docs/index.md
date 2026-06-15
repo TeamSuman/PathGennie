@@ -33,6 +33,8 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 - [Weighted Ensemble](weighted-ensemble.md) — path-informed free-energy /
   rate-constant stage.
 - [OPES via PLUMED](opes.md) — free-energy surfaces along a CV.
+- [Path sampling (TPS/TIS)](path-sampling.md) — kinetics via OpenPathSampling
+  on PathGennie seed paths.
 - [Project roadmap](roadmap.md) — what is implemented vs planned.
 - [Future roadmap](../ROADMAP.md) — strategic plan toward a PLUMED/WESTPA-class
   framework (tiers, milestones, priority queue).
@@ -46,6 +48,7 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 - [06 — Non-linear search with RRT-Connect](tutorials/06-rrt-search.md)
 - [07 — Metastable states, roadmap & the agent](tutorials/07-roadmap-agent.md)
 - [08 — Free-energy surfaces with OPES](tutorials/08-opes.md)
+- [09 — Kinetics with TPS/TIS (OpenPathSampling)](tutorials/09-path-sampling.md)
 
 ## Installation
 

@@ -85,8 +85,13 @@ Weighted Ensemble stage. Existing `input.yaml` cases continue to run unchanged.
   generates an `OPES_METAD` input and drives a PLUMED-capable engine) plus a
   dependency-free, CI-verified OPES core (`OPESBias`, `OPESSimulation`) validated
   on the toy Wolfe–Quapp surface.
+- `path_sampling.py` — OpenPathSampling (OPS) bridge: `PathSamplingStage` runs
+  **TPS/TIS** on a PathGennie seed path (an alternative to WE for kinetics), plus
+  dependency-free, CI-verified seed preparation (`CVRangeState`, `label_frames`,
+  `extract_transition_path`, `tis_interfaces`, `prepare_ops_seed`). Needs the
+  `pathsampling` extra (`openpathsampling`) and an OPS engine to run.
 - `make_stage(name, **cfg)` factory keyed on the `downstream` name
-  (`weighted_ensemble`, `opes`).
+  (`weighted_ensemble`, `opes`, `tps`, `tis`).
 - `runner.py` — `run_downstream` glue that builds a `PathEnsemble` and runs the
   configured stage; wired into all three backends behind `pathgennie.downstream`.
 - `driver.run(..., collect_seeds=True)` returns restartable seed handles aligned

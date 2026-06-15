@@ -48,6 +48,9 @@ dev = [
 ml = [
   "torch",
 ]
+pathsampling = [
+  "openpathsampling",
+]
 
 [project.scripts]
 pathgennie-amber = "pathgennie.backends.amber.pg_amber:main"

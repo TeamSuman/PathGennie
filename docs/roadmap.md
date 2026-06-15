@@ -17,6 +17,7 @@ development plan.
 | Agentic controller | `agent/controller.py` | escalate/relax/stop/frontier rules |
 | Weighted Ensemble | `sampling/weighted_ensemble.py` | weight conservation + WQ FES recovery |
 | OPES (core + PLUMED interface) | `sampling/opes.py` | toy WQ marginal recovery; PLUMED input generation |
+| Path sampling (TPS/TIS) bridge | `sampling/path_sampling.py` | seed prep / reactive-path extraction / interfaces (OPS run needs the `pathsampling` extra) |
 | Downstream wiring | `sampling/runner.py`, backends | toy `run_downstream` test |
 
 Run `pytest -q` to reproduce (69 tests; SPIB tests need the `ml` extra).
@@ -32,6 +33,9 @@ but a live run needs hardware/binaries unavailable here:
   via `pathgennie.downstream`).
 - **OPES on real MD**, which needs a **PLUMED-patched engine** exposing
   `run_plumed` (see [opes.md](opes.md)).
+- **TPS/TIS runs**, which need the `pathsampling` extra (`openpathsampling`) and
+  an OPS engine; only the dependency-free seed preparation is CI-tested (see
+  [path-sampling.md](path-sampling.md)).
 
 ## Planned / future work
 

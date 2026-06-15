@@ -115,9 +115,14 @@ WESTPA on weighted-ensemble plumbing. Its defensible, differentiated niche is an
 - **Fuse with the roadmap graph** (`search/roadmap.py`) so all-pairs pathways
   carry *rates*, not just `-log(fraction)` weights.
 
-### T2.5 Path sampling stages
-- TPS / TIS / forward-flux as `SamplingStage`s on the same `Engine`; PathGennie's
-  greedy/RRT paths are natural TPS seeds (a unique structural fit).
+### T2.5 Path sampling stages  *(partially delivered)*
+- **Done:** an OpenPathSampling bridge (`sampling/path_sampling.py`) —
+  `PathSamplingStage` runs TPS/TIS seeded by a PathGennie `PathEnsemble`, with
+  dependency-free, CI-tested seed preparation. Needs the `pathsampling` extra +
+  an OPS engine to run.
+- **Remaining:** forward-flux sampling; turnkey config-driven TPS/TIS from a
+  backend (an OPS engine must currently be supplied via the Python API); kinetics
+  post-analysis helpers (rate error bars, crossing-probability plots).
 
 ---
 

@@ -16,6 +16,13 @@ from .base import (
     build_path_ensemble,
 )
 from .opes import OPESStage, build_plumed_opes_input
+from .path_sampling import (
+    CVRangeState,
+    PathSamplingStage,
+    extract_transition_path,
+    prepare_ops_seed,
+    tis_interfaces,
+)
 from .weighted_ensemble import GridBinner, Walker, WeightedEnsembleStage, resample
 
 __all__ = [
@@ -29,6 +36,11 @@ __all__ = [
     "resample",
     "OPESStage",
     "build_plumed_opes_input",
+    "PathSamplingStage",
+    "CVRangeState",
+    "extract_transition_path",
+    "prepare_ops_seed",
+    "tis_interfaces",
     "make_stage",
 ]
 
@@ -36,7 +48,8 @@ __all__ = [
 def make_stage(name: str, **cfg):
     """Construct an enhanced-sampling stage by ``downstream`` name.
 
-    Recognised: ``weighted_ensemble`` (aliases ``we``/``wess``) and ``opes``.
+    Recognised: ``weighted_ensemble`` (aliases ``we``/``wess``), ``opes``, and
+    ``tps``/``tis`` (OpenPathSampling, for kinetics).
     """
 
     key = str(name).lower()
@@ -44,4 +57,9 @@ def make_stage(name: str, **cfg):
         return WeightedEnsembleStage(**cfg)
     if key == "opes":
         return OPESStage(**cfg)
-    raise KeyError(f"unknown downstream stage {name!r}; choose from ['weighted_ensemble', 'opes']")
+    if key in ("tps", "tis"):
+        return PathSamplingStage(mode=key, **cfg)
+    raise KeyError(
+        f"unknown downstream stage {name!r}; choose from "
+        "['weighted_ensemble', 'opes', 'tps', 'tis']"
+    )

@@ -278,6 +278,14 @@ Wolfe–Quapp marginal (Pearson r ≈ 0.99).
 PLUMED-capable engine; a dependency-free OPES core (verified on the toy
 Wolfe–Quapp marginal) is also provided. See [docs/opes.md](docs/opes.md).
 
+**Path sampling (TPS/TIS) via OpenPathSampling.** As an alternative to WE for
+kinetics, `PathSamplingStage` (`pathgennie.sampling.path_sampling`) bridges a
+discovered `PathEnsemble` to [OpenPathSampling](https://openpathsampling.org/):
+PathGennie's reactive path seeds TPS/TIS. The seed preparation (state ranges,
+reactive sub-path extraction, TIS interfaces) is dependency-free and tested;
+running TPS/TIS needs the `pathsampling` extra and an OPS engine. See
+[docs/path-sampling.md](docs/path-sampling.md).
+
 ## Non-Linear Search, Roadmap & Agent
 
 Beyond the greedy path, `pathgennie.search.rrt` provides **RRT / RRT-Connect**
