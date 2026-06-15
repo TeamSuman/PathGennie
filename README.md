@@ -48,10 +48,15 @@ for the kinds of paths PathGennie produces.
 
 ```text
 pathgennie/
+  core/         Backend-independent driver, selection, progress, device pool,
+                Engine protocol, and a toy Wolfe-Quapp Langevin engine
   backends/
-    amber/      Generic AMBER runner and utilities
-    gromacs/    Generic GROMACS runner and utilities
-    openmm/     OpenMM runner and in-process PathGennie MD engine
+    amber/      Device-aware AMBER engine + runner
+    gromacs/    Device-aware GROMACS engine + runner
+    openmm/     OpenMM in-process engine + runner
+tests/          pytest suite (selection, CV, I/O, OpenMM, device dispatch)
+benchmarks/
+  scaling.py    Device-pool scaling benchmark
 examples/
   alanine_dipeptide/
   CLN025/
@@ -148,6 +153,10 @@ Each case is driven by an `input.yaml` with four main parts:
   settings.
 - `pathgennie`: adaptive sampling settings such as `mode`, `tau1_steps`,
   `tau2_steps`, `max_trial`, `max_cycle`, `sigma`, and `temperature`.
+  Multi-GPU / reproducibility keys: `devices` (list of GPU indices to spread the
+  swarm across), `workers_per_device` (concurrent segments per GPU; replaces the
+  legacy `tau1_workers`), and `seed` (master RNG seed for the selection and
+  velocity draws).
 - `projection`: Python module and function that map coordinates to a
   collective-variable vector.
 - `convergence`: Python module and function that decide when the generated path
@@ -186,7 +195,9 @@ pathgennie:
     tau1_steps: 5
     tau2_steps: 10
     max_trial: 10
-    tau1_workers: 10
+    devices: [0, 1, 2, 3]   # spread the 10 samplers across 4 GPUs
+    workers_per_device: 1
+    seed: 12345             # reproducible selection / velocity draws
     max_cycle: 5000
     save_freq: 2
     sigma: 0.25

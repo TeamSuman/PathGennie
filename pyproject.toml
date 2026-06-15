@@ -42,6 +42,9 @@ dependencies = [
 examples = [
   "ParmEd",
 ]
+dev = [
+  "pytest",
+]
 
 [project.scripts]
 pathgennie-amber = "pathgennie.backends.amber.pg_amber:main"
