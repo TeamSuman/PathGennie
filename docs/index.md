@@ -34,6 +34,8 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
   rate-constant stage.
 - [OPES via PLUMED](opes.md) — free-energy surfaces along a CV.
 - [Project roadmap](roadmap.md) — what is implemented vs planned.
+- [Future roadmap](../ROADMAP.md) — strategic plan toward a PLUMED/WESTPA-class
+  framework (tiers, milestones, priority queue).
 
 **Tutorials** (all runnable with no MD binary or GPU unless noted)
 - [01 — Quickstart on the toy engine](tutorials/01-quickstart-toy.md)

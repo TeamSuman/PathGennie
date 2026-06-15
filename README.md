@@ -84,7 +84,8 @@ environment.yml
 ## Documentation
 
 Full manual and tutorials live in [`docs/`](docs/index.md); release notes in
-[`CHANGELOG.md`](CHANGELOG.md). Highlights: [multi-GPU](docs/multi-gpu.md),
+[`CHANGELOG.md`](CHANGELOG.md); the forward-looking strategic plan in
+[`ROADMAP.md`](ROADMAP.md). Highlights: [multi-GPU](docs/multi-gpu.md),
 [strategy profiles](docs/strategy-profiles.md), [SPIB CV](docs/data-driven-cv.md),
 [RRT search](docs/non-linear-search.md), [roadmap graph](docs/roadmap-graph.md),
 [agentic controller](docs/agent.md), [Weighted Ensemble](docs/weighted-ensemble.md),
