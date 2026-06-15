@@ -18,16 +18,22 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 - [Architecture](architecture.md) — the core driver, the `Engine` protocol,
   progress variables, and the parallel executor.
 - [Configuration](configuration.md) — the full `input.yaml` schema, including the
-  new `devices` / `workers_per_device` / `seed` / `profile` keys.
+  new `devices` / `workers_per_device` / `seed` / `profile` / `downstream` keys.
 - [Multi-GPU scalability](multi-gpu.md) — how the device pool spreads the swarm
   across GPUs, and how to benchmark it.
 - [Strategy profiles](strategy-profiles.md) — switching behaviour by *goal*
   (`discovery` vs `sampling`) and the learned-CV trajectory-length guard.
 - [Data-driven CVs (SPIB)](data-driven-cv.md) — learning a CV and metastable
   states on the fly.
-- [Weighted Ensemble](weighted-ensemble.md) — the path-informed downstream
-  free-energy / rate-constant stage.
-- [Roadmap](roadmap.md) — what is implemented vs planned.
+- [Non-linear search (RRT)](non-linear-search.md) — RRT / RRT-Connect for
+  pathways the greedy metric cannot follow.
+- [Roadmap graph](roadmap-graph.md) — all-pairs pathways between metastable
+  states (Dijkstra + Yen).
+- [Agentic controller](agent.md) — automating swarm size and segment lengths.
+- [Weighted Ensemble](weighted-ensemble.md) — path-informed free-energy /
+  rate-constant stage.
+- [OPES via PLUMED](opes.md) — free-energy surfaces along a CV.
+- [Project roadmap](roadmap.md) — what is implemented vs planned.
 
 **Tutorials** (all runnable with no MD binary or GPU unless noted)
 - [01 — Quickstart on the toy engine](tutorials/01-quickstart-toy.md)
@@ -35,6 +41,9 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 - [03 — A learned CV with SPIB](tutorials/03-spib-cv.md)
 - [04 — Free energies & rates with Weighted Ensemble](tutorials/04-weighted-ensemble.md)
 - [05 — Goal-driven strategy profiles](tutorials/05-strategy-profiles.md)
+- [06 — Non-linear search with RRT-Connect](tutorials/06-rrt-search.md)
+- [07 — Metastable states, roadmap & the agent](tutorials/07-roadmap-agent.md)
+- [08 — Free-energy surfaces with OPES](tutorials/08-opes.md)
 
 ## Installation
 

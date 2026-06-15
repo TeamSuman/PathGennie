@@ -49,18 +49,24 @@ for the kinds of paths PathGennie produces.
 ```text
 pathgennie/
   core/         Backend-independent driver, selection, progress, device pool,
-                Engine protocol, and a toy Wolfe-Quapp Langevin engine
+                Engine + ExplorerPolicy protocols, strategy profiles, toy engine
   cv/           Data-driven CVs: NumPy featurization + on-the-fly SPIB
                 (learned CV + emergent metastable states; needs PyTorch)
+  search/       Non-linear search: RRT / RRT-Connect + conformational roadmap
+                graph (Dijkstra + Yen k-shortest all-pairs pathways)
+  agent/        Rule-based agentic controller (adaptive N / tau1 / tau2)
   sampling/     Enhanced-sampling stages on one contract (PathEnsemble +
-                SamplingStage): path-informed Weighted Ensemble (+ OPES planned)
+                SamplingStage): path-informed Weighted Ensemble and OPES (PLUMED)
   backends/
     amber/      Device-aware AMBER engine + runner
     gromacs/    Device-aware GROMACS engine + runner
     openmm/     OpenMM in-process engine + runner
-tests/          pytest suite (selection, CV, I/O, OpenMM, device dispatch)
+docs/           Manual + tutorials (start at docs/index.md)
+tests/          pytest suite (69 tests; selection, CV, I/O, device dispatch,
+                SPIB, RRT, roadmap, controller, WE, OPES)
 benchmarks/
   scaling.py    Device-pool scaling benchmark
+  we_fes.py     WE free-energy validation vs the analytic Wolfe-Quapp marginal
 examples/
   alanine_dipeptide/
   CLN025/
@@ -71,8 +77,18 @@ assets/
   unbind.webp
   reaction.webp
   movie.webp
+CHANGELOG.md
 environment.yml
 ```
+
+## Documentation
+
+Full manual and tutorials live in [`docs/`](docs/index.md); release notes in
+[`CHANGELOG.md`](CHANGELOG.md). Highlights: [multi-GPU](docs/multi-gpu.md),
+[strategy profiles](docs/strategy-profiles.md), [SPIB CV](docs/data-driven-cv.md),
+[RRT search](docs/non-linear-search.md), [roadmap graph](docs/roadmap-graph.md),
+[agentic controller](docs/agent.md), [Weighted Ensemble](docs/weighted-ensemble.md),
+and [OPES](docs/opes.md).
 
 ## Installation
 
@@ -246,12 +262,30 @@ multi-GPU executor — no bias forces), and resamples (split/merge, weight-conse
 to keep walkers spread across CV bins along the path. It returns a free-energy
 profile along the CV and, with recycling enabled, a steady-state rate constant.
 
-WE and the planned OPES stage implement one `SamplingStage` contract and are
-selected by name via `make_stage("weighted_ensemble", ...)` (or, eventually, the
-`pathgennie.downstream` config key). To hand WE restartable seeds, run the driver
-with `collect_seeds=True` and build the ensemble with `build_path_ensemble(...)`.
+WE and the OPES stage implement one `SamplingStage` contract and are selected by
+name via `make_stage("weighted_ensemble" | "opes", ...)` or the
+`pathgennie.downstream` config key, which the backends honour: set
+`downstream: weighted_ensemble` (plus a `weighted_ensemble:` block) and the run
+discovers a path then runs WE automatically, writing `free_energy.csv` (and
+`rate_constants.json` if recycling). To do it from Python, run the driver with
+`collect_seeds=True` and build the ensemble with `build_path_ensemble(...)`.
 `benchmarks/we_fes.py` validates the recovered free energy against the analytic
 Wolfe–Quapp marginal (Pearson r ≈ 0.99).
+
+**OPES (free-energy surfaces) via PLUMED.** `OPESStage`
+(`pathgennie.sampling.opes`) generates an `OPES_METAD` PLUMED input and drives a
+PLUMED-capable engine; a dependency-free OPES core (verified on the toy
+Wolfe–Quapp marginal) is also provided. See [docs/opes.md](docs/opes.md).
+
+## Non-Linear Search, Roadmap & Agent
+
+Beyond the greedy path, `pathgennie.search.rrt` provides **RRT / RRT-Connect**
+tree search for pathways the monotone metric cannot follow (backtracking,
+direction changes, orthogonal CVs), `pathgennie.search.roadmap` builds a
+conformational graph and extracts the minimum-free-energy and competing pathways
+between metastable states (Dijkstra + Yen), and `pathgennie.agent` provides a
+rule-based controller that adapts the swarm size and segment lengths on the fly.
+See the [docs](docs/index.md) for details and tutorials.
 
 ## Writing a New Case
 
