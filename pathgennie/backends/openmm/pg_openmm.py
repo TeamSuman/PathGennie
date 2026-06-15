@@ -124,7 +124,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         sigma=pg_cfg.get("sigma", 0.05),
         seed=pg_cfg.get("seed"),
     )
-    trajectory, metrics = runner.run(
+    downstream = pg_cfg.get("downstream")
+    result = runner.run(
         initial_pos=AmberInpcrdFile(str(initial_restart)).positions,  # type: ignore
         tau1=pg_cfg["tau1_steps"],
         tau2=pg_cfg["tau2_steps"],
@@ -132,7 +133,13 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         max_cycle=pg_cfg["max_cycle"],
         save_freq=pg_cfg.get("save_freq", 1),
         verbosity=pg_cfg.get("verbosity", 1),
+        collect_seeds=bool(downstream),
     )
+    seed_handles = None
+    if downstream:
+        trajectory, metrics, seed_handles = result
+    else:
+        trajectory, metrics = result
 
     trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.dcd")
     metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
@@ -140,6 +147,16 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         trajectory = wrap_frames_pbc(trajectory, topology_info)
     write_trajectory(trajectory_path, topology_info, trajectory)
     write_metrics_csv(metrics_path, metrics)
+
+    if downstream:
+        from pathgennie.sampling.runner import make_scalar_cv, run_downstream
+        stage_cfg = dict(cfg.get(downstream, {}))
+        component = stage_cfg.pop("cv_component", 0)
+        scalar_cv = make_scalar_cv(proj_fn, projection_args, component)
+        run_downstream(
+            downstream, stage_cfg, engine=runner.engine, traj=trajectory, metrics=metrics,
+            seed_handles=seed_handles, scalar_cv_fn=scalar_cv, output_dir=output_dir,
+        )
     print(f"Saved frames: {len(trajectory)}")
     print(f"Metric samples: {len(metrics)}")
     print(f"Reactive path: {trajectory_path}")

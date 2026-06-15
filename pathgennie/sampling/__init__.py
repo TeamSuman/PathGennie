@@ -15,6 +15,7 @@ from .base import (
     SamplingStage,
     build_path_ensemble,
 )
+from .opes import OPESStage, build_plumed_opes_input
 from .weighted_ensemble import GridBinner, Walker, WeightedEnsembleStage, resample
 
 __all__ = [
@@ -26,6 +27,8 @@ __all__ = [
     "GridBinner",
     "Walker",
     "resample",
+    "OPESStage",
+    "build_plumed_opes_input",
     "make_stage",
 ]
 
@@ -33,13 +36,12 @@ __all__ = [
 def make_stage(name: str, **cfg):
     """Construct an enhanced-sampling stage by ``downstream`` name.
 
-    Recognised: ``weighted_ensemble``.  ``opes`` is reserved for Phase 6b and
-    currently raises :class:`NotImplementedError`.
+    Recognised: ``weighted_ensemble`` (aliases ``we``/``wess``) and ``opes``.
     """
 
     key = str(name).lower()
     if key in ("weighted_ensemble", "we", "wess"):
         return WeightedEnsembleStage(**cfg)
     if key == "opes":
-        raise NotImplementedError("OPESStage is not implemented yet (Phase 6b)")
-    raise KeyError(f"unknown downstream stage {name!r}; choose from ['weighted_ensemble']")
+        return OPESStage(**cfg)
+    raise KeyError(f"unknown downstream stage {name!r}; choose from ['weighted_ensemble', 'opes']")

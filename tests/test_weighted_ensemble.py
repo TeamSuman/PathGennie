@@ -143,9 +143,7 @@ def test_we_recycling_produces_finite_rate():
     np.testing.assert_allclose(result.metadata["weight_trace"], 1.0, atol=1e-9)
 
 
-def test_make_stage_opes_not_implemented():
-    try:
-        make_stage("opes")
-        assert False, "expected NotImplementedError"
-    except NotImplementedError:
-        pass
+def test_make_stage_builds_opes():
+    from pathgennie.sampling.opes import OPESStage
+    stage = make_stage("opes", mode="toy", cv_axis=1)
+    assert isinstance(stage, OPESStage)

@@ -70,8 +70,10 @@ class PathGennieMD:
         max_cycle: int = 5000,
         save_freq: int = 10,
         verbosity: int = 1,
+        collect_seeds: bool = False,
     ):
         engine = OpenMMEngine(self.sim, self.temperature)
+        self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)
         start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
 
@@ -98,4 +100,5 @@ class PathGennieMD:
             initial_handle,
             tau1=tau1, tau2=tau2, max_trial=max_trial,
             max_cycle=max_cycle, save_freq=save_freq,
+            collect_seeds=collect_seeds,
         )

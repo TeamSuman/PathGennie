@@ -134,14 +134,21 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         verbosity=pg_cfg.get("verbosity", 1),
     )
 
-    traj, metrics = driver.run(
+    downstream = pg_cfg.get("downstream")
+    result = driver.run(
         str(initial_restart),
         tau1=pg_cfg["tau1_steps"],
         tau2=pg_cfg["tau2_steps"],
         max_trial=pg_cfg["max_trial"],
         max_cycle=pg_cfg["max_cycle"],
         save_freq=pg_cfg.get("save_freq", 10),
+        collect_seeds=bool(downstream),
     )
+    seed_handles = None
+    if downstream:
+        traj, metrics, seed_handles = result
+    else:
+        traj, metrics = result
 
     trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.pdb")
     metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
@@ -149,6 +156,18 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         traj = wrap_frames_pbc(traj, topology_info)
     write_trajectory(trajectory_path, topology_info, traj)
     write_metrics_csv(metrics_path, metrics)
+
+    # Optional downstream enhanced-sampling stage (uses scratch, so before cleanup).
+    if downstream:
+        from pathgennie.sampling.runner import make_scalar_cv, run_downstream
+        stage_cfg = dict(cfg.get(downstream, {}))
+        component = stage_cfg.pop("cv_component", 0)
+        scalar_cv = make_scalar_cv(proj_fn, projection_args, component)
+        run_downstream(
+            downstream, stage_cfg, engine=engine, traj=traj, metrics=metrics,
+            seed_handles=seed_handles, scalar_cv_fn=scalar_cv, output_dir=output_dir,
+        )
+
     shutil.rmtree(scratch_dir)
 
     print(f"Saved frames: {len(traj)}")
