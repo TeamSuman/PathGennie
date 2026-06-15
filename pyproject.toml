@@ -45,6 +45,9 @@ examples = [
 dev = [
   "pytest",
 ]
+ml = [
+  "torch",
+]
 
 [project.scripts]
 pathgennie-amber = "pathgennie.backends.amber.pg_amber:main"

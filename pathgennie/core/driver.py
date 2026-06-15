@@ -157,6 +157,13 @@ class PathGennieDriver:
             anchor, anchor_coords, anchor_cv, anchor_metric = new_anchor, coords, cv, metric
             metric_history.append(metric)
 
+            # Let adaptive progress variables (e.g. SPIB) buffer the path and
+            # retrain on the fly. Done once per cycle on the committed anchor so
+            # the CV is stable within a cycle's project/metric calls.
+            observe = getattr(self.progress, "observe", None)
+            if observe is not None:
+                observe(coords, cycle)
+
             if cycle % save_freq == 0:
                 trajectory.append(coords.copy())
                 last_saved_cycle = cycle

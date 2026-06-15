@@ -50,6 +50,8 @@ for the kinds of paths PathGennie produces.
 pathgennie/
   core/         Backend-independent driver, selection, progress, device pool,
                 Engine protocol, and a toy Wolfe-Quapp Langevin engine
+  cv/           Data-driven CVs: NumPy featurization + on-the-fly SPIB
+                (learned CV + emergent metastable states; needs PyTorch)
   backends/
     amber/      Device-aware AMBER engine + runner
     gromacs/    Device-aware GROMACS engine + runner
@@ -216,6 +218,17 @@ convergence:
     group_b_resname: MOL
     threshold: 10.0
 ```
+
+## Data-Driven CVs (SPIB)
+
+Instead of a hand-crafted progress variable, PathGennie can learn one on the fly
+with **SPIB** (State Predictive Information Bottleneck, `pathgennie.cv.spib`),
+which jointly learns a low-dimensional CV and an emergent set of metastable
+states from the frames the run visits. `SPIBProgress` bootstraps from a coarse
+geometric CV, buffers the path, retrains periodically (the iterative
+path-learning cycle), and then steers using the learned latent. It is an adaptive
+`ProgressVariable`, so it plugs into the same driver as the built-in metrics.
+Requires the `ml` extra (`pip install -e .[ml]`, i.e. PyTorch).
 
 ## Writing a New Case
 
