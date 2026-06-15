@@ -9,6 +9,37 @@ OPES can be added as interchangeable implementations rather than bespoke
 scripts.
 """
 
-from .base import PathEnsemble, SamplingResult, SamplingStage
+from .base import (
+    PathEnsemble,
+    SamplingResult,
+    SamplingStage,
+    build_path_ensemble,
+)
+from .weighted_ensemble import GridBinner, Walker, WeightedEnsembleStage, resample
 
-__all__ = ["PathEnsemble", "SamplingResult", "SamplingStage"]
+__all__ = [
+    "PathEnsemble",
+    "SamplingResult",
+    "SamplingStage",
+    "build_path_ensemble",
+    "WeightedEnsembleStage",
+    "GridBinner",
+    "Walker",
+    "resample",
+    "make_stage",
+]
+
+
+def make_stage(name: str, **cfg):
+    """Construct an enhanced-sampling stage by ``downstream`` name.
+
+    Recognised: ``weighted_ensemble``.  ``opes`` is reserved for Phase 6b and
+    currently raises :class:`NotImplementedError`.
+    """
+
+    key = str(name).lower()
+    if key in ("weighted_ensemble", "we", "wess"):
+        return WeightedEnsembleStage(**cfg)
+    if key == "opes":
+        raise NotImplementedError("OPESStage is not implemented yet (Phase 6b)")
+    raise KeyError(f"unknown downstream stage {name!r}; choose from ['weighted_ensemble']")

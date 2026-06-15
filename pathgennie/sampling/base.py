@@ -23,7 +23,7 @@ from typing import Any, List, Optional, Protocol, runtime_checkable
 
 import numpy as np
 
-__all__ = ["PathEnsemble", "SamplingResult", "SamplingStage"]
+__all__ = ["PathEnsemble", "SamplingResult", "SamplingStage", "build_path_ensemble"]
 
 
 @dataclass
@@ -64,3 +64,33 @@ class SamplingStage(Protocol):
 
     def run(self, ensemble: PathEnsemble, engine: Any, **kwargs: Any) -> SamplingResult:
         ...
+
+
+def build_path_ensemble(
+    frames: np.ndarray,
+    metrics: np.ndarray,
+    *,
+    handles: Optional[List[Any]] = None,
+    cv_fn: Optional[Any] = None,
+    state_labels: Optional[np.ndarray] = None,
+    metadata: Optional[dict] = None,
+) -> PathEnsemble:
+    """Assemble a :class:`PathEnsemble` from a driver run's outputs.
+
+    ``handles`` are the restartable seed handles from ``driver.run(...,
+    collect_seeds=True)``.  If ``cv_fn`` is given it is mapped over ``frames`` to
+    fill ``cv_trajectory`` (each frame is an ``(n_atoms, 3)`` array).
+    """
+
+    frames = np.asarray(frames, dtype=float)
+    cv_trajectory = None
+    if cv_fn is not None and frames.ndim == 3 and frames.shape[0] > 0:
+        cv_trajectory = np.array([np.atleast_1d(np.asarray(cv_fn(f), dtype=float)) for f in frames])
+    return PathEnsemble(
+        frames=frames,
+        metrics=np.asarray(metrics, dtype=float),
+        cv_trajectory=cv_trajectory,
+        state_labels=None if state_labels is None else np.asarray(state_labels),
+        handles=list(handles) if handles is not None else [],
+        metadata=dict(metadata or {}),
+    )

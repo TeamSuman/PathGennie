@@ -52,8 +52,8 @@ pathgennie/
                 Engine protocol, and a toy Wolfe-Quapp Langevin engine
   cv/           Data-driven CVs: NumPy featurization + on-the-fly SPIB
                 (learned CV + emergent metastable states; needs PyTorch)
-  sampling/     Enhanced-sampling stage contract (PathEnsemble + SamplingStage)
-                for downstream weighted ensemble / OPES
+  sampling/     Enhanced-sampling stages on one contract (PathEnsemble +
+                SamplingStage): path-informed Weighted Ensemble (+ OPES planned)
   backends/
     amber/      Device-aware AMBER engine + runner
     gromacs/    Device-aware GROMACS engine + runner
@@ -235,6 +235,23 @@ geometric CV, buffers the path, retrains periodically (the iterative
 path-learning cycle), and then steers using the learned latent. It is an adaptive
 `ProgressVariable`, so it plugs into the same driver as the built-in metrics.
 Requires the `ml` extra (`pip install -e .[ml]`, i.e. PyTorch).
+
+## Enhanced Sampling: Weighted Ensemble
+
+Once a path is discovered, the `sampling` package turns it into quantitative
+results. `WeightedEnsembleStage` (`pathgennie.sampling.weighted_ensemble`) runs
+**path-informed Weighted Ensemble**: it seeds weighted walkers from the discovered
+`PathEnsemble`, propagates them with *unbiased* MD (reusing the same `Engine` and
+multi-GPU executor — no bias forces), and resamples (split/merge, weight-conserving)
+to keep walkers spread across CV bins along the path. It returns a free-energy
+profile along the CV and, with recycling enabled, a steady-state rate constant.
+
+WE and the planned OPES stage implement one `SamplingStage` contract and are
+selected by name via `make_stage("weighted_ensemble", ...)` (or, eventually, the
+`pathgennie.downstream` config key). To hand WE restartable seeds, run the driver
+with `collect_seeds=True` and build the ensemble with `build_path_ensemble(...)`.
+`benchmarks/we_fes.py` validates the recovered free energy against the analytic
+Wolfe–Quapp marginal (Pearson r ≈ 0.99).
 
 ## Writing a New Case
 

@@ -86,11 +86,19 @@ class PathGennieDriver:
         max_trial: int,
         max_cycle: int,
         save_freq: int = 10,
+        collect_seeds: bool = False,
     ):
         """Run the adaptive cycle and return ``(trajectory, metrics)`` arrays.
 
         ``trajectory`` has shape ``(n_saved, n_atoms, 3)`` in Angstrom;
         ``metrics`` has shape ``(n_cycles,)``.
+
+        When ``collect_seeds`` is True, an independent clone of the committed
+        anchor is retained for every saved frame and the call returns
+        ``(trajectory, metrics, seed_handles)`` — restartable seeds aligned with
+        the trajectory frames, for handing to a downstream sampling stage
+        (e.g. Weighted Ensemble). Default behaviour and the 2-tuple return are
+        unchanged.
         """
 
         anchor = initial_handle
@@ -99,7 +107,13 @@ class PathGennieDriver:
 
         trajectory: List[np.ndarray] = []
         metric_history: List[float] = []
+        seed_handles: List[Handle] = []
         last_saved_cycle = -1
+
+        def save_frame(coords: np.ndarray, handle: Handle) -> None:
+            trajectory.append(coords.copy())
+            if collect_seeds:
+                seed_handles.append(self.engine.clone_anchor(handle))
 
         def worker(trial_index: int, device: Optional[int]) -> TrialResult:
             handle = self.engine.clone_anchor(anchor)
@@ -165,7 +179,7 @@ class PathGennieDriver:
                 observe(coords, cycle)
 
             if cycle % save_freq == 0:
-                trajectory.append(coords.copy())
+                save_frame(coords, anchor)
                 last_saved_cycle = cycle
                 if self.verbosity:
                     print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")
@@ -173,7 +187,7 @@ class PathGennieDriver:
             if self.convergence_fn(coords):
                 converged_at = cycle
                 if last_saved_cycle != cycle:  # always keep the converged frame
-                    trajectory.append(coords.copy())
+                    save_frame(coords, anchor)
                 if self.verbosity:
                     print(f"Converged at cycle {cycle}")
                 break
@@ -182,4 +196,6 @@ class PathGennieDriver:
             tail = f" (converged at {converged_at})" if converged_at is not None else ""
             print(f"Final metric: {anchor_metric:.4f}{tail}")
 
+        if collect_seeds:
+            return np.asarray(trajectory), np.asarray(metric_history), seed_handles
         return np.asarray(trajectory), np.asarray(metric_history)
