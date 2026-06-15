@@ -20,6 +20,7 @@ import yaml
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool
 from pathgennie.core.progress import EscapeMetric, TargetMetric
+from pathgennie.core.strategy import resolve_profile
 
 from .engine import CoreAmberEngine
 from .utils import (
@@ -49,7 +50,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     amber_cfg = cfg["amber"]
-    pg_cfg = cfg["pathgennie"]
+    pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, amber_cfg["topology"])
     initial_restart = resolve_case_path(case_dir, amber_cfg["initial_restart"])
     executable = Path(amber_cfg["executable"]).expanduser()

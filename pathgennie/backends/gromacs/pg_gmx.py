@@ -27,6 +27,7 @@ import yaml
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool
 from pathgennie.core.progress import EscapeMetric, TargetMetric
+from pathgennie.core.strategy import resolve_profile
 
 from .utils import (
     enrich_args,
@@ -260,7 +261,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     gmx_cfg = cfg["gromacs"]
-    pg_cfg = cfg["pathgennie"]
+    pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, gmx_cfg["topology"])
     initial_structure = resolve_case_path(case_dir, gmx_cfg["initial_structure"])
     executable = Path(gmx_cfg["executable"]).expanduser()

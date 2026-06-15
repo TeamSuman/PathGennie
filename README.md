@@ -52,6 +52,8 @@ pathgennie/
                 Engine protocol, and a toy Wolfe-Quapp Langevin engine
   cv/           Data-driven CVs: NumPy featurization + on-the-fly SPIB
                 (learned CV + emergent metastable states; needs PyTorch)
+  sampling/     Enhanced-sampling stage contract (PathEnsemble + SamplingStage)
+                for downstream weighted ensemble / OPES
   backends/
     amber/      Device-aware AMBER engine + runner
     gromacs/    Device-aware GROMACS engine + runner
@@ -159,6 +161,10 @@ Each case is driven by an `input.yaml` with four main parts:
   swarm across), `workers_per_device` (concurrent segments per GPU; replaces the
   legacy `tau1_workers`), and `seed` (master RNG seed for the selection and
   velocity draws).
+  Goal key: `profile` (`discovery` for fast candidate paths with ultrashort,
+  greedy, geometric-CV trajectories — the original regime; `sampling` for longer
+  trajectories, a learned CV, and a downstream enhanced-sampling stage). Profile
+  values are defaults; any explicit `pathgennie` key overrides them.
 - `projection`: Python module and function that map coordinates to a
   collective-variable vector.
 - `convergence`: Python module and function that decide when the generated path

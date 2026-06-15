@@ -23,6 +23,8 @@ from pathgennie.backends.amber.utils import (
     write_trajectory,
 )
 
+from pathgennie.core.strategy import resolve_profile
+
 from .pg_omm import PathGennieMD
 
 
@@ -65,7 +67,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     openmm_cfg = cfg["openmm"]
-    pg_cfg = cfg["pathgennie"]
+    pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, openmm_cfg["topology"])
     initial_restart = resolve_case_path(case_dir, openmm_cfg["initial_restart"])
 
@@ -120,6 +122,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         convergence_args=convergence_args,
         temperature=temperature,
         sigma=pg_cfg.get("sigma", 0.05),
+        seed=pg_cfg.get("seed"),
     )
     trajectory, metrics = runner.run(
         initial_pos=AmberInpcrdFile(str(initial_restart)).positions,  # type: ignore

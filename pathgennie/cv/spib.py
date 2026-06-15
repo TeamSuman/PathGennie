@@ -132,6 +132,7 @@ def train_spib(
     """
 
     torch.manual_seed(seed)
+    rng = np.random.default_rng(seed)
     features = np.asarray(features, dtype=np.float64)
     n = features.shape[0]
     if n <= dt + 1:
@@ -155,7 +156,7 @@ def train_spib(
 
         idx = np.arange(x_t.shape[0])
         for _epoch in range(epochs):
-            np.random.shuffle(idx)
+            rng.shuffle(idx)
             for start in range(0, len(idx), batch_size):
                 batch = idx[start : start + batch_size]
                 xb = x_t[batch]
