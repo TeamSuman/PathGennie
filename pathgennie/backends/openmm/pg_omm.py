@@ -1,18 +1,32 @@
+"""OpenMM PathGennie runner.
+
+Thin wrapper that builds an :class:`OpenMMEngine` and the shared
+:class:`~pathgennie.core.driver.PathGennieDriver`.  The adaptive cycle, selection
+and convergence logic now live in :mod:`pathgennie.core`; this class only adapts
+the OpenMM-specific construction and preserves the original public API used by
+``pg_openmm.py``.
+
+PathGennie reference:
+'PathGennie: Rapid Generation of Rare Event Pathways via Direction-Guided
+Adaptive Sampling Using Ultrashort Monitored Trajectories', J. Chem. Theory
+Comput. 2025.
+"""
+
+from __future__ import annotations
+
 from typing import Callable, Dict, Optional
 
-import numpy as np  # type: ignore
-from openmm import unit  # type: ignore
-from openmm.app import Simulation  # type: ignore
-from tqdm.auto import trange
+import numpy as np
+from openmm.app import Simulation
+
+from pathgennie.core.driver import PathGennieDriver
+from pathgennie.core.parallel import SerialExecutor
+from pathgennie.core.progress import EscapeMetric, TargetMetric
+
+from .engine import OpenMMEngine
 
 
 class PathGennieMD:
-    """
-    PathGennie implementation based on:
-    'PathGennie: Rapid Generation of Rare Event Pathways via Direction-Guided Adaptive Sampling Using Ultrashort Monitored Trajectories'
-    J. Chem. Theory Comput. 2016, 12, 5, 2035-2043
-    """
-
     NM_TO_ANG = 10.0
 
     def __init__(
@@ -27,15 +41,14 @@ class PathGennieMD:
         escape_direction: str = "auto",
         temperature: float = 300.0,
         sigma: float = 0.5,
+        seed: Optional[int] = None,
     ):
         if mode not in ("escape", "target"):
-            raise ValueError("mode must be 'escape', 'target'")
+            raise ValueError("mode must be 'escape' or 'target'")
         if mode == "target" and target_projection is None:
             raise ValueError("target_projection required for target mode")
-        if mode == "target" and convergence_fn is None:
-            raise ValueError("convergence_fn required for target mode")
-        if mode == "escape" and convergence_fn is None:
-            raise ValueError("convergence_fn required for escape mode")
+        if convergence_fn is None:
+            raise ValueError("convergence_fn is required")
 
         self.sim = simulation
         self.mode = mode
@@ -44,148 +57,48 @@ class PathGennieMD:
         self.target = np.asarray(target_projection) if target_projection is not None else None
         self.converge_fn = convergence_fn
         self.converge_args = convergence_args or {}
-        self.escape_direction = escape_direction
-
-        # Temperature for velocity re-randomization
-        self.temperature = temperature * unit.kelvin  # type: ignore
+        self.temperature = temperature
         self.sigma = sigma
+        self.seed = seed
 
     def run(
         self,
-        initial_pos: np.ndarray,
+        initial_pos,
         tau1: int = 200,
         tau2: int = 200,
         max_trial: int = 20,
         max_cycle: int = 5000,
         save_freq: int = 10,
         verbosity: int = 1,
+        collect_seeds: bool = False,
     ):
+        engine = OpenMMEngine(self.sim, self.temperature)
+        self.engine = engine  # exposed so a downstream stage can reuse it
+        initial_handle = engine.create_state(initial_pos)
+        start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
 
-        trajectory = []
-        metrics_history = []
+        if self.mode == "escape":
+            progress = EscapeMetric(
+                self.proj_fn, start_cv, projection_args=self.proj_args,
+                escape_metric="distance_from_start",
+            )
+        else:
+            progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args)
 
-        # ---- initialize system ----
-        self.sim.context.setPositions(initial_pos)
-        self.sim.context.setVelocitiesToTemperature(self.temperature)
+        converge_fn = self.converge_fn
+        converge_args = self.converge_args
 
-        # Initial anchor
-        anchor_state = self.sim.context.getState(getPositions=True, getVelocities=True)
-        pos = self._pos()
-        start_proj = self._proj(pos)
-        current_proj = start_proj
+        def convergence(coords: np.ndarray) -> bool:
+            return bool(converge_fn(coords, **converge_args))
 
-        # Metric definition
-        def metric(cv):
-            if self.mode == "escape":
-                return np.linalg.norm(cv - start_proj)
-            else:
-                # Progress is closeness to target
-                return -np.linalg.norm(cv - self.target)
-
-        current_metric = metric(current_proj)
-        cycle_iter = trange(max_cycle, desc="PathGennie") if verbosity >= 2 else range(max_cycle)
-
-        for cycle in cycle_iter:
-            trial_results = []
-
-            #  Run M trials ----
-            for _ in range(max_trial):
-                # Restore anchor positions but randomize velocities
-                self.sim.context.setState(anchor_state)
-                self.sim.context.setVelocitiesToTemperature(self.temperature)
-
-                # sampler segment
-                self.sim.step(tau1)
-
-                trial_pos = self._pos()
-                trial_proj = self._proj(trial_pos)
-                trial_metric = metric(trial_proj)
-
-                # Store the state and metric
-                # We need to store the FULL state after tau1 to continue it later
-                state_after_tau1 = self.sim.context.getState(getPositions=True, getVelocities=True)
-                trial_results.append(
-                    {"metric": trial_metric, "state": state_after_tau1, "pos": trial_pos, "proj": trial_proj}
-                )
-
-            raw_metrics = np.array([r["metric"] for r in trial_results])
-            m_min = np.min(raw_metrics)
-            m_max = np.max(raw_metrics)
-
-            # Avoid division by zero if all trials are identical
-            if (m_max - m_min) < 1e-9:
-                probs = np.ones(len(trial_results)) / len(trial_results)
-            else:
-                # 1. Scale metrics between 0 and 1
-                # 0 = worst trial of this batch, 1 = best trial
-                scaled_metrics = (raw_metrics - m_min) / (m_max - m_min)
-
-                # 2. Boltzmann Weighting on the scaled interval
-                # Shifted by 1.0 so the max weight is always exp(0) = 1
-                logits = (scaled_metrics - 1.0) / (self.sigma + 1e-12)
-                weights = np.exp(logits)
-                probs = weights / np.sum(weights)
-
-            chosen_idx = np.random.choice(len(trial_results), p=probs)
-            best_trial = trial_results[chosen_idx]
-
-            # ---- runner segment ----
-            self.sim.context.setState(best_trial["state"])
-
-            self.sim.step(tau2)
-
-            # Update anchor
-            anchor_state = self.sim.context.getState(getPositions=True, getVelocities=True)
-            pos = self._pos()
-            current_proj = self._proj(pos)
-            current_metric = metric(current_proj)
-            metrics_history.append(current_metric)
-
-            # ---- SAVE (after tau2) ----
-            if cycle % save_freq == 0:
-                trajectory.append(pos * self.NM_TO_ANG)
-                if verbosity:
-                    print(f"Cycle {cycle}: metric={current_metric:.4f}, CV={current_proj}")
-
-            # ---- CONVERGENCE ----
-            converge_fn = self.converge_fn
-            if converge_fn is None:
-                raise ValueError("convergence_fn is required for run()")
-
-            if self.mode == "escape":
-                if converge_fn(pos * self.NM_TO_ANG, **self.converge_args):
-                    if verbosity:
-                        print(f"\nEscape convergence reached at cycle {cycle}")
-                    break
-            else:  # mode == "target"
-                # For target mode, metric is -norm(cv - target), so norm < tol means metric > -tol
-                if converge_fn(pos * self.NM_TO_ANG, **self.converge_args):
-                    if verbosity:
-                        print(f"\nTarget convergence reached at cycle {cycle}")
-                    break
-
-            if verbosity >= 2 and cycle % 10 == 0 and cycle % save_freq != 0:
-                print(f"Cycle {cycle:4d}: metric={current_metric:.4f} (best of {max_trial})")
-
-        if verbosity:
-            print("Final metric:", current_metric)
-
-        return np.array(trajectory), np.array(metrics_history)
-
-    def _get_step_size_ps(self):
-        """Return integrator step size in picoseconds when available."""
-        try:
-            step_size = self.sim.integrator.getStepSize()
-            return step_size.value_in_unit(unit.picosecond)  # type: ignore
-        except Exception:
-            return 1.0
-
-    def _pos(self):
-        """Returns positions as raw numpy array in nanometers"""
-        p = self.sim.context.getState(getPositions=True).getPositions(asNumpy=True)
-        return p.value_in_unit(unit.nanometer)  # type: ignore
-
-    def _proj(self, pos):
-        """pos is raw numpy array in nm. Returns projection (CV) as numpy array."""
-        pos_ang = pos * self.NM_TO_ANG
-        return np.asarray(self.proj_fn(pos_ang, **self.proj_args))
+        driver = PathGennieDriver(
+            engine, progress, convergence,
+            executor=SerialExecutor(),
+            sigma=self.sigma, seed=self.seed, verbosity=verbosity,
+        )
+        return driver.run(
+            initial_handle,
+            tau1=tau1, tau2=tau2, max_trial=max_trial,
+            max_cycle=max_cycle, save_freq=save_freq,
+            collect_seeds=collect_seeds,
+        )
