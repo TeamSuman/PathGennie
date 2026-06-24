@@ -71,13 +71,25 @@ class PathGennieMD:
         # Initial anchor
         anchor_state = self.sim.context.getState(getPositions=True, getVelocities=True)
         pos = self._pos()
-        start_proj = self._proj(pos)
+        start_proj = self._proj(pos, cycle=0)
         current_proj = start_proj
 
         # Metric definition
         def metric(cv):
             if self.mode == "escape":
-                return np.linalg.norm(cv - start_proj)
+                s_proj = start_proj
+                
+                # Support NaN masking for explicit dimensional reduction
+                if np.isnan(cv).any():
+                    valid = ~np.isnan(cv)
+                    cv = cv[valid]
+                    s_proj = s_proj[valid]
+                
+                # Support implicit shape reduction (assume they kept the LAST elements)
+                if len(cv) < len(s_proj):
+                    s_proj = s_proj[-len(cv):]
+                    
+                return np.linalg.norm(cv - s_proj)
             else:
                 # Progress is closeness to target
                 return -np.linalg.norm(cv - self.target)
@@ -98,7 +110,7 @@ class PathGennieMD:
                 self.sim.step(tau1)
 
                 trial_pos = self._pos()
-                trial_proj = self._proj(trial_pos)
+                trial_proj = self._proj(trial_pos, cycle=cycle)
                 trial_metric = metric(trial_proj)
 
                 # Store the state and metric
@@ -137,7 +149,7 @@ class PathGennieMD:
             # Update anchor
             anchor_state = self.sim.context.getState(getPositions=True, getVelocities=True)
             pos = self._pos()
-            current_proj = self._proj(pos)
+            current_proj = self._proj(pos, cycle=cycle)
             current_metric = metric(current_proj)
             metrics_history.append(current_metric)
 
@@ -185,7 +197,13 @@ class PathGennieMD:
         p = self.sim.context.getState(getPositions=True).getPositions(asNumpy=True)
         return p.value_in_unit(unit.nanometer)  # type: ignore
 
-    def _proj(self, pos):
+    def _proj(self, pos, cycle=None):
         """pos is raw numpy array in nm. Returns projection (CV) as numpy array."""
         pos_ang = pos * self.NM_TO_ANG
-        return np.asarray(self.proj_fn(pos_ang, **self.proj_args))
+        kwargs = dict(self.proj_args)
+        if cycle is not None:
+            import inspect
+            sig = inspect.signature(self.proj_fn)
+            if 'cycle' in sig.parameters:
+                kwargs['cycle'] = cycle
+        return np.asarray(self.proj_fn(pos_ang, **kwargs))

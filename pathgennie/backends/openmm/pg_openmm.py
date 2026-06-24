@@ -34,6 +34,7 @@ def build_simulation(
     timestep_ps: float,
     friction_per_ps: float,
     platform_name: str = "CPU",
+    plumed_file: str | None = None,
 ) -> Simulation:
     top = AmberPrmtopFile(str(prmtop_path))
     crd = AmberInpcrdFile(str(inpcrd_path))
@@ -42,6 +43,11 @@ def build_simulation(
         nonbondedCutoff=1.0 * unit.nanometer,  # type: ignore
         constraints=HBonds,
     )
+    if plumed_file is not None:
+        import openmmplumed
+        with open(plumed_file, "r") as f:
+            script = f.read()
+        system.addForce(openmmplumed.PlumedForce(script))
     integrator = LangevinMiddleIntegrator(
         temperature * unit.kelvin,  # type: ignore
         friction_per_ps / unit.picosecond,  # type: ignore
@@ -108,7 +114,32 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         timestep_ps=float(md_cfg.get("timestep_ps", 0.001)),
         friction_per_ps=float(md_cfg.get("friction_per_ps", 1.0)),
         platform_name=openmm_cfg.get("platform", "CPU"),
+        plumed_file=md_cfg.get("plumed_file", None),
     )
+
+    equilibration_steps = int(md_cfg.get("equilibration_steps", 0))
+    if equilibration_steps > 0:
+        print(f"Running {equilibration_steps} equilibration steps...")
+        from openmm.app import StateDataReporter
+        import sys
+        
+        # Add a reporter to show progress during equilibration every 10% of the steps
+        report_freq = max(1, equilibration_steps // 10)
+        reporter = StateDataReporter(sys.stdout, report_freq, step=True, potentialEnergy=True, temperature=True, speed=True)
+        simulation.reporters.append(reporter)
+        
+        simulation.step(equilibration_steps)
+        
+        # Remove the reporter so it doesn't clutter PathGennie's output
+        simulation.reporters.remove(reporter)
+
+    initial_pos = simulation.context.getState(getPositions=True).getPositions()
+    
+    if equilibration_steps > 0:
+        # Re-evaluate the CV after equilibration
+        pos_array = simulation.context.getState(getPositions=True).getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+        eq_cv = proj_fn(pos_array, **projection_args)
+        print(f"Equilibrated CV: {eq_cv}")
 
     runner = PathGennieMD(
         simulation=simulation,
@@ -122,7 +153,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         sigma=pg_cfg.get("sigma", 0.05),
     )
     trajectory, metrics = runner.run(
-        initial_pos=AmberInpcrdFile(str(initial_restart)).positions,  # type: ignore
+        initial_pos=initial_pos,
         tau1=pg_cfg["tau1_steps"],
         tau2=pg_cfg["tau2_steps"],
         max_trial=pg_cfg["max_trial"],

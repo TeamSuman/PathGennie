@@ -52,4 +52,4 @@ pathgennie-openmm = "pathgennie.backends.openmm.pg_openmm:main"
 version = { attr = "pathgennie.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["pathgennie*"]
+include = ["pathgennie*", "pathrefinement*"]
