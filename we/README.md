@@ -146,9 +146,5 @@ source normalization or independently justified source weights. Channel
 completeness, overlapping PathCV tubes, force-field dependence, and analysis
 window selection remain system-dependent limitations.
 
-## Contact
-
-Suman Chakrabarty, Department of Chemical and Biological Sciences,
-S. N. Bose National Centre for Basic Sciences, Kolkata, India  
 Email: `sumanc@bose.res.in`
 
