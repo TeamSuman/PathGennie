@@ -10,16 +10,6 @@ simulations along path collective variables (PathCVs). The method is designed
 to estimate the target flux associated with a specified transition tube while
 preserving the underlying unbiased molecular dynamics.
 
-> **Repository status**
->
-> This is a research-code snapshot, not yet a complete archival reproduction
-> package. It contains the in-house WE implementation, a runnable three-hole
-> potential tutorial, and 1OPJ production templates. The PathGennie trajectory
-> generation, dynamic-time-warping clustering, neural-network path-refinement
-> pipeline, 3PTB production setup, large molecular inputs, trajectories, and
-> manuscript analysis data are not included in this snapshot. WESTPA
-> interoperability has not been demonstrated.
-
 ## Method
 
 The complete workflow described in the manuscript is:
@@ -51,7 +41,6 @@ string relaxation.
   P-loop/hinge and alpha-C-helix channels in wild-type Abl and the N368S
   mutant.
 
-Only the toy and 1OPJ WE setup code is included here.
 
 ## Repository Layout
 
@@ -157,30 +146,9 @@ source normalization or independently justified source weights. Channel
 completeness, overlapping PathCV tubes, force-field dependence, and analysis
 window selection remain system-dependent limitations.
 
-## Reproducibility and Data
-
-Generated flux logs, walker logs, trajectories, checkpoints, figures, and
-large molecular-system inputs are excluded by `.gitignore`. Keep local inputs
-under `example_inputs/`. A publication archive should provide versioned source
-code, exact input structures and parameters, independent random seeds,
-analysis scripts, and a persistent DOI.
-
-## Citation
-
-The manuscript is currently in preparation. Until a journal citation or
-archive DOI is available, cite this repository together with:
-
-```text
-D. Maity, S. Shahid, S. Bhattacharya, R. Majumdar, and S. Chakrabarty,
-"Pathway-resolved kinetics from pre-seeded weighted ensemble simulations
-guided by neural-network path collective variables," manuscript in preparation.
-```
-
-Replace this provisional entry with the published citation and repository DOI
-when they become available.
-
 ## Contact
 
 Suman Chakrabarty, Department of Chemical and Biological Sciences,
 S. N. Bose National Centre for Basic Sciences, Kolkata, India  
 Email: `sumanc@bose.res.in`
+
