@@ -1,0 +1,73 @@
+# Path Refinement
+
+The `pathrefinement` module provides tools to iteratively refine collective variable (CV) pathways using short-burst molecular dynamics (PathGennie) and principal curve neural network smoothing. 
+
+This implementation aligns with the methodology described in:
+**PathGennie: Rapid Generation of Rare Event Pathways via Direction-Guided Adaptive Sampling Using Ultrashort Monitored Trajectories**
+
+## Key Features
+- **Generic Path Refiner**: Iterative refinement algorithm using PathGennieMD trajectory sampling and NN smoothing.
+- **Toy Potentials**: `MullerBrownPotential` and `ThreeHolePotential` for quick 2D validation of refinement algorithms.
+- **PathCV**: Dimension-agnostic implementation of the Branduardi et al. path collective variables ($s, z$).
+- **Principal Curve**: Endpoint-pinned curve smoothing for generating reference paths.
+
+## Structure
+- `refiner.py`: Contains the `PathRefiner` and `PathRefinementConfig`.
+- `potentials.py`: Defines 2D analytical toy potentials and generates OpenMM simulations for them.
+- `pathcv.py`: Path Collective Variable implementation.
+- `ensemblerefiner.py`: PyTorch-based neural network model that learns the continuous map $t \to \mathbf{x}$.
+- `principal_curve.py`: Expectation-maximization based curve smoothing.
+- `examples/`: Runnable scripts for toy potentials (`refine_muller_brown.py`, `refine_three_hole.py`) and explicit molecular systems (`CLN025/run_chignolin.py`).
+
+## Getting Started
+
+You can run the provided toy potential examples to see how path refinement improves an initially poor path estimate:
+
+```bash
+conda activate pathgennie
+
+# Run the Muller-Brown example
+python pathrefinement/examples/refine_muller_brown.py
+
+# Run the Three-Hole potential example
+python pathrefinement/examples/refine_three_hole.py
+```
+Output plots will be saved in `pathrefinement/examples/results/`.
+
+### Using the Refiner
+
+```python
+from pathrefinement import MullerBrownPotential, PathRefiner, PathRefinementConfig
+
+# 1. Setup system and initial path
+potential = MullerBrownPotential()
+bad_path = potential.make_bad_initial_path("A", "C", n_images=20, noise=0.0)
+
+# 2. Configure refinement
+config = PathRefinementConfig(
+    n_iterations=5,
+    n_trajectories=10,
+    pathgennie_tau1=100,
+    pathgennie_tau2=100,
+    pathgennie_max_trial=10,
+    pathgennie_max_cycle=100,
+    keep_endpoints=True,
+    verbosity=1
+)
+
+# 3. Refine
+refiner = PathRefiner(potential, config)
+result = refiner.refine(bad_path)
+
+# 4. Save and plot
+result.plot("refined_path.png", potential=potential)
+```
+
+## How It Works (The Algorithm)
+
+The iterative path refinement is a fixed-point iteration:
+1. **Initialize**: Begin with an initial path and construct a `PathCV`.
+2. **Sample**: Run PathGennieMD in target mode along the `PathCV` to generate an ensemble of short reactive trajectories.
+3. **Smooth**: Apply `PrincipalCurve` to the raw trajectories, then train an `EnsemblePathRefinerFast` (neural network) to learn a consensus mapping $t \to \mathbf{x}$.
+4. **Update**: Construct a new `PathCV` from the refined neural network path.
+5. **Iterate**: Repeat until the reference path stops changing significantly.

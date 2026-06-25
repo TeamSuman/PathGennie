@@ -1,0 +1,39 @@
+# input.yaml - PathGennie OAMe-G2 unbinding configuration for OpenMM
+# Goal: Guide OCB/MOL host-guest dissociation using Plumed CV
+
+openmm:
+    topology: system.prmtop
+    initial_restart: system.rst7
+    platform: CUDA
+
+pathgennie:
+    mode: escape
+    tau1_steps: 20
+    tau2_steps: 20
+    max_trial: 10
+    max_cycle: 5000
+    save_freq: 10
+    sigma: 0.05
+    temperature: 300
+    verbosity: 1
+
+md:
+    timestep_ps: 0.004
+    friction_per_ps: 5.0
+    equilibration_steps: 5000
+    plumed_file: constraint.dat
+
+projection:
+    module: plumed_cv
+    function: project
+    box: [40.273098, 40.273098, 40.273098]
+
+convergence:
+    module: plumed_cv
+    function: convergence_fn
+    box: [40.273098, 40.273098, 40.273098]
+
+workdir: pathgennie_openmm_run
+output:
+    trajectory: unbinding_5_10_15.dcd
+    wrap_pbc: true

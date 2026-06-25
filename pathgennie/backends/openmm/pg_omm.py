@@ -168,12 +168,16 @@ class PathGennieMD:
                 if converge_fn(pos * self.NM_TO_ANG, **self.converge_args):
                     if verbosity:
                         print(f"\nEscape convergence reached at cycle {cycle}")
+                    if cycle % save_freq != 0:
+                        trajectory.append(pos * self.NM_TO_ANG)
                     break
             else:  # mode == "target"
                 # For target mode, metric is -norm(cv - target), so norm < tol means metric > -tol
                 if converge_fn(pos * self.NM_TO_ANG, **self.converge_args):
                     if verbosity:
                         print(f"\nTarget convergence reached at cycle {cycle}")
+                    if cycle % save_freq != 0:
+                        trajectory.append(pos * self.NM_TO_ANG)
                     break
 
             if verbosity >= 2 and cycle % 10 == 0 and cycle % save_freq != 0:
