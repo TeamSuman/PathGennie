@@ -22,6 +22,8 @@ from pathgennie.backends.amber.utils import (
     write_metrics_csv,
     write_trajectory,
 )
+from pathgennie.backends.gromacs.utils import read_topology_info, read_gro_coords
+from openmm.app import GromacsGroFile, GromacsTopFile
 
 from .pg_omm import PathGennieMD
 
@@ -36,13 +38,30 @@ def build_simulation(
     platform_name: str = "CPU",
     plumed_file: str | None = None,
 ) -> Simulation:
-    top = AmberPrmtopFile(str(prmtop_path))
-    crd = AmberInpcrdFile(str(inpcrd_path))
-    system = top.createSystem(
-        nonbondedMethod=PME,  # type: ignore
-        nonbondedCutoff=1.0 * unit.nanometer,  # type: ignore
-        constraints=HBonds,
-    )
+    if prmtop_path.suffix in {".top", ".itp"} or inpcrd_path.suffix == ".gro":
+        gro = GromacsGroFile(str(inpcrd_path))
+        top = GromacsTopFile(
+            str(prmtop_path),
+            periodicBoxVectors=gro.getPeriodicBoxVectors()
+        )
+        system = top.createSystem(
+            nonbondedMethod=PME,
+            nonbondedCutoff=1.0 * unit.nanometer,
+            constraints=HBonds,
+        )
+        positions = gro.positions
+        box_vectors = gro.getPeriodicBoxVectors()
+    else:
+        top = AmberPrmtopFile(str(prmtop_path))
+        crd = AmberInpcrdFile(str(inpcrd_path))
+        system = top.createSystem(
+            nonbondedMethod=PME,  # type: ignore
+            nonbondedCutoff=1.0 * unit.nanometer,  # type: ignore
+            constraints=HBonds,
+        )
+        positions = crd.positions
+        box_vectors = crd.boxVectors
+
     if plumed_file is not None:
         import openmmplumed
         with open(plumed_file, "r") as f:
@@ -55,9 +74,9 @@ def build_simulation(
     )
     platform = Platform.getPlatformByName(platform_name)
     simulation = Simulation(top.topology, system, integrator, platform)
-    simulation.context.setPositions(crd.positions)
-    if crd.boxVectors is not None:
-        simulation.context.setPeriodicBoxVectors(*crd.boxVectors)  # type: ignore
+    simulation.context.setPositions(positions)
+    if box_vectors is not None:
+        simulation.context.setPeriodicBoxVectors(*box_vectors)  # type: ignore
     return simulation
 
 
@@ -79,7 +98,12 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     if missing:
         raise FileNotFoundError("Missing required input file(s): " + ", ".join(missing))
 
-    topology_info = parse_prmtop(topology)
+    # Gromacs or Amber topology info parsing
+    if topology.suffix in {".top", ".itp"} or initial_restart.suffix == ".gro":
+        topology_info = read_topology_info(initial_restart)
+    else:
+        topology_info = parse_prmtop(topology)
+
     temperature = float(pg_cfg.get("temperature", 300.0))
     md_cfg = cfg.get("md", {})
 
@@ -95,7 +119,12 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     projection_args = enrich_args(projection_args, topology_info)
     convergence_args = enrich_args(convergence_args, topology_info)
 
-    initial_cv = proj_fn(read_rst7_coords(initial_restart), **projection_args)
+    if topology.suffix in {".top", ".itp"} or initial_restart.suffix == ".gro":
+        initial_coords = read_gro_coords(initial_restart)
+    else:
+        initial_coords = read_rst7_coords(initial_restart)
+
+    initial_cv = proj_fn(initial_coords, **projection_args)
     print(f"Initial CV: {initial_cv}")
 
     mode = pg_cfg.get("mode", "target")
@@ -107,15 +136,53 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         if target_projection.ndim == 0:
             target_projection = target_projection.reshape(1)
 
-    simulation = build_simulation(
-        topology,
-        initial_restart,
-        temperature=temperature,
-        timestep_ps=float(md_cfg.get("timestep_ps", 0.001)),
-        friction_per_ps=float(md_cfg.get("friction_per_ps", 1.0)),
-        platform_name=openmm_cfg.get("platform", "CPU"),
-        plumed_file=md_cfg.get("plumed_file", None),
-    )
+    system_file = cfg.get("system", {}).get("system_file")
+    if system_file is not None:
+        system_file_path = resolve_case_path(case_dir, system_file)
+        if system_file_path.exists():
+            print(f"Loading custom system builder from {system_file_path}...")
+            make_system_fn = load_function(case_dir, system_file_path.stem, "make_system")
+            
+            if topology.suffix in {".top", ".itp"} or initial_restart.suffix == ".gro":
+                gro = GromacsGroFile(str(initial_restart))
+                top = GromacsTopFile(
+                    str(topology),
+                    periodicBoxVectors=gro.getPeriodicBoxVectors()
+                )
+                positions = gro.positions
+                box_vectors = gro.getPeriodicBoxVectors()
+            else:
+                top = AmberPrmtopFile(str(topology))
+                crd = AmberInpcrdFile(str(initial_restart))
+                positions = crd.positions
+                box_vectors = crd.boxVectors
+
+            timestep_ps = float(md_cfg.get("timestep_ps", 0.002))
+            system, integrator = make_system_fn(
+                top,
+                temp=temperature,
+                dt=timestep_ps,
+                pressure=float(md_cfg.get("pressure", 1.0))
+            )
+            
+            platform_name = openmm_cfg.get("platform", "CPU")
+            platform = Platform.getPlatformByName(platform_name)
+            simulation = Simulation(top.topology, system, integrator, platform)
+            simulation.context.setPositions(positions)
+            if box_vectors is not None:
+                simulation.context.setPeriodicBoxVectors(*box_vectors)  # type: ignore
+        else:
+            raise FileNotFoundError(f"Custom system file not found: {system_file_path}")
+    else:
+        simulation = build_simulation(
+            topology,
+            initial_restart,
+            temperature=temperature,
+            timestep_ps=float(md_cfg.get("timestep_ps", 0.001)),
+            friction_per_ps=float(md_cfg.get("friction_per_ps", 1.0)),
+            platform_name=openmm_cfg.get("platform", "CPU"),
+            plumed_file=md_cfg.get("plumed_file", None),
+        )
 
     equilibration_steps = int(md_cfg.get("equilibration_steps", 0))
     if equilibration_steps > 0:

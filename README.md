@@ -142,18 +142,79 @@ for the QM/MM region, targets, and regeneration notes.
 
 ## Configuration Model
 
-Each case is driven by an `input.yaml` with four main parts:
+Each case is driven by a case-local YAML configuration file (typically `input.yaml`) containing configuration options for the simulation backend, PathGennie adaptive sampling parameters, MD engine controls, and the projection/convergence functions.
 
-- Backend block: `amber`, `gromacs`, or `openmm` input files and executable
-  settings.
-- `pathgennie`: adaptive sampling settings such as `mode`, `tau1_steps`,
-  `tau2_steps`, `max_trial`, `max_cycle`, `sigma`, and `temperature`.
-- `projection`: Python module and function that map coordinates to a
-  collective-variable vector.
-- `convergence`: Python module and function that decide when the generated path
-  has reached the desired state.
+### Configuration Reference
 
-Example target-mode configuration:
+#### 1. Root Level
+* `workdir` (str): Output and scratch directory path. Defaults to `pathgennie_run` (AMBER), `pathgennie_gmx_run` (GROMACS), or `pathgennie_openmm_run` (OpenMM).
+* `output` (dict, OpenMM only): Override output files:
+  * `trajectory` (str): Filename for output reactive path. Defaults to `reactive_path.dcd`.
+  * `metrics` (str): Filename for output metrics CSV. Defaults to `metrics.csv`.
+  * `wrap_pbc` (bool): If `true`, wrap coordinates within periodic box boundaries. Defaults to `false`.
+* `system` (dict, OpenMM only):
+  * `system_file` (str): Python script file (e.g., `system.py`) containing a custom `make_system` builder.
+
+#### 2. Backend Block (Specify one based on engine)
+##### AMBER (`amber`)
+* `topology` (str): Path to `.prmtop` topology file.
+* `initial_restart` (str): Path to `.rst7` or `.inpcrd` coordinate file.
+* `executable` (str): Path to simulator executable (e.g., `sander`, `pmemd`, `pmemd.cuda`).
+* `system` (str): System type, either `"explicit"` or `"implicit"`. Defaults to `"explicit"`.
+* `mpi_launcher` (str, optional): MPI launcher executable (e.g., `mpirun`, `mpiexec`).
+* `mpi_ranks` (int, optional): Number of parallel MPI processes (default: 1).
+* `mpi_launcher_args` (list, optional): Additional arguments for the MPI launcher.
+
+##### GROMACS (`gromacs`)
+* `topology` (str): Path to `.top` topology file.
+* `initial_structure` (str): Path to `.gro` coordinate structure file.
+* `executable` (str): Path to GROMACS executable (e.g., `gmx`, `gmx_mpi`).
+* `mdp` (str): Path to a base GROMACS `.mdp` control template file. Defaults to `md.mdp`.
+* `reference_template` (str, optional): Reference structure/topology file for mapping atom indices. (aliases: `reference_structure`, `metadata`). Defaults to `initial_structure`.
+* `grompp_args` (list, optional): List of command line flags to pass to GROMACS `grompp`.
+* `mdrun_args` (list, optional): List of command line flags to pass to GROMACS `mdrun`.
+
+##### OpenMM (`openmm`)
+* `topology` (str): Path to AMBER `.prmtop` or GROMACS `.top` topology file.
+* `initial_restart` (str): Path to AMBER `.rst7` / `.inpcrd` or GROMACS `.gro` coordinate structure file.
+* `platform` (str): OpenMM platform name (`Reference`, `CPU`, `CUDA`, or `OpenCL`). Defaults to `CPU`.
+
+#### 3. PathGennie (`pathgennie`)
+* `mode` (str): Sampling mode, either `"escape"` (drive progress away from start) or `"target"` (drive progress toward a target state).
+* `tau1_steps` (int): Number of MD simulation steps per short-burst sampling trial.
+* `tau2_steps` (int): Number of MD simulation steps per segment extension.
+* `max_trial` (int): Number of parallel sampling trials run in each cycle.
+* `max_cycle` (int): Maximum number of adaptive sampling cycles to run.
+* `save_freq` (int): Number of cycles between saving coordinate frames (default: 10).
+* `sigma` (float): Boltzmann weighting parameter controlling selection bias (lower = higher bias).
+* `temperature` (float): Simulation temperature in Kelvin (default: 300.0).
+* `verbosity` (int): Logging detail level: `0` (silent), `1` (minimal), `2` (verbose).
+* `target_projection` (list of float, Target Mode only): Coordinate target coordinates.
+
+#### 4. MD Parameters (`md`)
+* `controls` (dict, AMBER/GROMACS): Key-value dictionary of `.mdin` or `.mdp` config parameters to override.
+* `extra_text` (str, AMBER only): Arbitrary block of text to append to the end of the generated `.mdin` files.
+* `timestep_ps` (float, OpenMM only): Integrator step size in picoseconds. Defaults to `0.002`.
+* `friction_per_ps` (float, OpenMM only): Langevin integrator friction coefficient. Defaults to `1.0`.
+* `equilibration_steps` (int, OpenMM only): Equilibration steps to run before path generation. Defaults to `0`.
+* `pressure` (float, OpenMM only): System pressure in bar for Barostat when custom builders are loaded. Defaults to `1.0`.
+* `plumed_file` (str, OpenMM only): Path to PLUMED file to attach PLUMED-based forces.
+
+#### 5. Projection CV (`projection`)
+* `module` (str): Case-local Python filename (without `.py`) containing the CV calculation function.
+* `function` (str): Name of the Python function within that module.
+* *Additional options*: Any extra keys defined in this block are passed dynamically as keyword arguments (`**kwargs`) to the projection function.
+
+#### 6. Convergence (`convergence`)
+* `module` (str): Case-local Python filename (without `.py`) containing the convergence check function.
+* `function` (str): Name of the Python function.
+* *Additional options*: Any extra keys defined in this block are passed dynamically as keyword arguments (`**kwargs`) to the convergence function.
+
+---
+
+### Example Configuration Files
+
+#### Example target-mode configuration:
 
 ```yaml
 pathgennie:
@@ -178,7 +239,7 @@ convergence:
     tolerance: 15.0
 ```
 
-Example escape-mode configuration:
+#### Example escape-mode configuration:
 
 ```yaml
 pathgennie:
@@ -186,7 +247,6 @@ pathgennie:
     tau1_steps: 5
     tau2_steps: 10
     max_trial: 10
-    tau1_workers: 10
     max_cycle: 5000
     save_freq: 2
     sigma: 0.25
@@ -205,6 +265,7 @@ convergence:
     group_b_resname: MOL
     threshold: 10.0
 ```
+
 
 ## Writing a New Case
 
