@@ -53,6 +53,7 @@ pathsampling = [
 ]
 
 [project.scripts]
+pathgennie = "pathgennie.cli.main:main"
 pathgennie-amber = "pathgennie.backends.amber.pg_amber:main"
 pathgennie-gromacs = "pathgennie.backends.gromacs.pg_gmx:main"
 pathgennie-openmm = "pathgennie.backends.openmm.pg_openmm:main"
@@ -61,4 +62,4 @@ pathgennie-openmm = "pathgennie.backends.openmm.pg_openmm:main"
 version = { attr = "pathgennie.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["pathgennie*"]
+include = ["pathgennie*", "pathrefinement*"]

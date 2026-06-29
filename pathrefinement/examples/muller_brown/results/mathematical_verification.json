@@ -1,0 +1,139 @@
+{
+  "passed": 33,
+  "failed": 0,
+  "total": 33,
+  "checks": {
+    "s(A) \u2248 0": {
+      "pass": true,
+      "detail": "s(A) = 0.000850"
+    },
+    "s(B) \u2248 1": {
+      "pass": true,
+      "detail": "s(B) = 0.999155"
+    },
+    "s monotonic along path": {
+      "pass": true,
+      "detail": ""
+    },
+    "z \u2248 0 at path nodes": {
+      "pass": true,
+      "detail": "mean(z) = -0.000042"
+    },
+    "z > 0 far from path": {
+      "pass": true,
+      "detail": "z(far) = 8.8346"
+    },
+    "lambda positive": {
+      "pass": true,
+      "detail": "\u03bb = 4520.58"
+    },
+    "lambda matches implementation formula": {
+      "pass": true,
+      "detail": "\u03bb_impl = 4520.6, \u03bb_expected = 4520.6"
+    },
+    "Frechet distance decreases overall": {
+      "pass": true,
+      "detail": "0.02612 \u2192 0.01863"
+    },
+    "MSD decreases overall": {
+      "pass": true,
+      "detail": "0.000205 \u2192 0.000049"
+    },
+    "Final Frechet < 0.03": {
+      "pass": true,
+      "detail": "Final Frechet = 0.01863"
+    },
+    "Layer 1: Linear(1,128)": {
+      "pass": true,
+      "detail": ""
+    },
+    "Layer 2: SiLU activation": {
+      "pass": true,
+      "detail": ""
+    },
+    "Layer 3: Linear(128,128)": {
+      "pass": true,
+      "detail": ""
+    },
+    "Layer 4: SiLU activation": {
+      "pass": true,
+      "detail": ""
+    },
+    "Layer 5: Linear(128,2)": {
+      "pass": true,
+      "detail": ""
+    },
+    "Endpoint pinning at t=0": {
+      "pass": true,
+      "detail": "out(0) = [-0.558224  1.441726]"
+    },
+    "Endpoint pinning at t=1": {
+      "pass": true,
+      "detail": "out(1) = [0.623499 0.028038]"
+    },
+    "Exact A at t=0": {
+      "pass": true,
+      "detail": ""
+    },
+    "Exact B at t=1": {
+      "pass": true,
+      "detail": ""
+    },
+    "Midpoint formula correct: (1-t)*A + t*B + t*(1-t)*net(t)": {
+      "pass": true,
+      "detail": "out(0.5) = [0.01646011 0.7385701 ], expected = [0.01646013 0.73857009]"
+    },
+    "Output shape (100, 2)": {
+      "pass": true,
+      "detail": ""
+    },
+    "Endpoint A pinned": {
+      "pass": true,
+      "detail": ""
+    },
+    "Endpoint B pinned": {
+      "pass": true,
+      "detail": ""
+    },
+    "Curvature reduced by >30%": {
+      "pass": true,
+      "detail": "Noisy curvature std = 0.0532, Smooth = 0.0135"
+    },
+    "Uniform arc-length parameterization": {
+      "pass": true,
+      "detail": "Relative std of segments = 0.101"
+    },
+    "Energy at A < 0": {
+      "pass": true,
+      "detail": "E(A) = -14.6700"
+    },
+    "Energy at B < 0": {
+      "pass": true,
+      "detail": "E(B) = -10.8167"
+    },
+    "A is lower minimum than B": {
+      "pass": true,
+      "detail": "E(A)=-14.6700 < E(B)=-10.8167"
+    },
+    "Same functional form as common.py": {
+      "pass": true,
+      "detail": "potentials E(A)=-14.6700, common E(A)=-146.6995"
+    },
+    "All paths have same shape": {
+      "pass": true,
+      "detail": "shape = (100, 2)"
+    },
+    "All paths start at A": {
+      "pass": true,
+      "detail": ""
+    },
+    "All paths end at B": {
+      "pass": true,
+      "detail": ""
+    },
+    "Final path smoother than initial": {
+      "pass": true,
+      "detail": "Initial curvature std = 0.0070, Final = 0.0025"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+numpy
+pandas
+scipy
+matplotlib
+openmm
+mdtraj
+MDAnalysis
+joblib
+tqdm
