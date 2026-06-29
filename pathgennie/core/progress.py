@@ -26,7 +26,7 @@ __all__ = ["ProgressVariable", "EscapeMetric", "TargetMetric", "CallableProjecti
 class ProgressVariable(Protocol):
     """Projection + scalar progress metric used to score swarm trials."""
 
-    def project(self, coords: np.ndarray) -> np.ndarray:
+    def project(self, coords: np.ndarray, cycle: Optional[int] = None) -> np.ndarray:
         """Map ``(n_atoms, 3)`` Angstrom coordinates to a CV vector."""
         ...
 
@@ -42,8 +42,14 @@ class CallableProjection:
         self._fn = projection_fn
         self._args = projection_args or {}
 
-    def project(self, coords: np.ndarray) -> np.ndarray:
-        return np.asarray(self._fn(coords, **self._args), dtype=float)
+    def project(self, coords: np.ndarray, cycle: Optional[int] = None) -> np.ndarray:
+        kwargs = dict(self._args)
+        if cycle is not None:
+            import inspect
+            sig = inspect.signature(self._fn)
+            if 'cycle' in sig.parameters:
+                kwargs['cycle'] = cycle
+        return np.asarray(self._fn(coords, **kwargs), dtype=float)
 
 
 class EscapeMetric(CallableProjection):
@@ -67,7 +73,17 @@ class EscapeMetric(CallableProjection):
         cv = np.asarray(cv, dtype=float)
         if self.escape_metric == "cv0":
             return float(cv.ravel()[0])
-        return float(np.linalg.norm(cv - self.start_cv))
+        
+        s_cv = self.start_cv
+        if np.isnan(cv).any():
+            valid = ~np.isnan(cv)
+            cv = cv[valid]
+            s_cv = s_cv[valid]
+
+        if len(cv) < len(s_cv):
+            s_cv = s_cv[-len(cv):]
+
+        return float(np.linalg.norm(cv - s_cv))
 
 
 class TargetMetric(CallableProjection):
@@ -85,4 +101,13 @@ class TargetMetric(CallableProjection):
 
     def metric(self, cv: np.ndarray) -> float:
         cv = np.asarray(cv, dtype=float)
-        return float(-np.linalg.norm(cv - self.target_cv))
+        t_cv = self.target_cv
+        if np.isnan(cv).any():
+            valid = ~np.isnan(cv)
+            cv = cv[valid]
+            t_cv = t_cv[valid]
+
+        if len(cv) < len(t_cv):
+            t_cv = t_cv[-len(cv):]
+
+        return float(-np.linalg.norm(cv - t_cv))

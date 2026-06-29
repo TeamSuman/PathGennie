@@ -73,8 +73,8 @@ class PathGennieDriver:
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
 
-    def _evaluate(self, coords: np.ndarray):
-        cv = np.asarray(self.progress.project(coords), dtype=float)
+    def _evaluate(self, coords: np.ndarray, cycle: Optional[int] = None):
+        cv = np.asarray(self.progress.project(coords, cycle=cycle), dtype=float)
         return cv, float(self.progress.metric(cv))
 
     def run(
@@ -103,7 +103,7 @@ class PathGennieDriver:
 
         anchor = initial_handle
         anchor_coords = self.engine.get_coords(anchor)
-        anchor_cv, anchor_metric = self._evaluate(anchor_coords)
+        anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
 
         trajectory: List[np.ndarray] = []
         metric_history: List[float] = []
@@ -121,7 +121,7 @@ class PathGennieDriver:
                 handle, tau1, randomize_velocities=True, seed=self._seed(), device=device
             )
             coords = self.engine.get_coords(seg)
-            cv, metric = self._evaluate(coords)
+            cv, metric = self._evaluate(coords, cycle=cycle)
             return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords)
 
         converged_at: Optional[int] = None
@@ -139,7 +139,7 @@ class PathGennieDriver:
                 seed=self._seed(), device=self.executor.devices[0],
             )
             tau2_coords = self.engine.get_coords(tau2_handle)
-            tau2_cv, tau2_metric = self._evaluate(tau2_coords)
+            tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
 
             # ---- candidate selection (optional rejection of a worse runner) ----
             if self.reject_worse_tau2 and tau2_metric < chosen.metric:
