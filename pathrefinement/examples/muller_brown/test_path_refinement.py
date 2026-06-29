@@ -330,9 +330,8 @@ def test_path_history_consistency():
     if not os.path.exists(history_file):
         print("  ✗ path_history.npz not found")
         return False
-
     data = np.load(history_file)
-    keys = sorted(data.keys())
+    keys = sorted(data.keys(), key=lambda x: int(x.split("_")[1]))
     print(f"  Found {len(keys)} entries in history: {keys}")
 
     # Check they are sequential

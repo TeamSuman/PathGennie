@@ -22,7 +22,7 @@ pathgennie:
 refiner:
   epochs: 500
   hidden_dim: 124
-  device: cuda
+  device: cpu
   lr: 0.005
   patience: 200
   batch_size: 2048
