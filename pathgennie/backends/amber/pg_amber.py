@@ -15,12 +15,12 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-import yaml
 
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool
 from pathgennie.core.progress import EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
+from pathgennie.utils.config import load_config
 
 from .engine import CoreAmberEngine
 from .utils import (
@@ -39,7 +39,8 @@ from .utils import (
 def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     case_dir = case_dir.resolve()
     os.chdir(case_dir)
-    cfg = yaml.safe_load((case_dir / config_name).read_text(encoding="utf-8"))
+    cfg_model = load_config(case_dir / config_name)
+    cfg = cfg_model.model_dump(exclude_none=True)
 
     workdir = resolve_case_path(case_dir, cfg.get("workdir", "pathgennie_run"))
     scratch_dir = workdir / "scratch"
@@ -100,6 +101,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
             raise ValueError("pathgennie.mode is 'target', but pathgennie.target_projection is missing")
         target_projection = np.asarray(pg_cfg["target_projection"], dtype=float).reshape(-1)
         progress = TargetMetric(proj_fn, target_projection, projection_args=projection_args)
+        assert target_projection is not None
+        progress: ProgressVariable
     else:
         progress = EscapeMetric(
             proj_fn, start_cv, projection_args=projection_args,

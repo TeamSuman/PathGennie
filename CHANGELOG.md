@@ -4,6 +4,34 @@ All notable changes to PathGennie are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-06-29
+
+This release consolidates the high-performance computing (HPC) parallel scaling features, asynchronous streaming checkpointing, and robust input validation with the newly merged **PathCV** (Path Collective Variables), **Path Refinement**, and standalone **Weighted Ensemble** (WE) frameworks.
+
+### Added
+
+**High-Performance Computing (HPC) & Scalability**
+- **MPI & Dask parallel executors (`pathgennie/core/parallel.py`):** Added `MPIExecutor` and `DaskExecutor` to distribute swarm evaluations across cluster nodes. See [docs/tutorial.md](docs/tutorial.md#1-multi-node-parallelism-with-mpi-and-dask).
+- **Asynchronous trajectory streaming (`pathgennie/core/storage.py`):** Added `HDF5Storage` class utilizing a background thread to stream frames/metrics to HDF5 without keeping them in memory. See [docs/tutorial.md](docs/tutorial.md#2-asynchronous-hdf5-trajectory-streaming).
+- **Robust input validation (`pathgennie/utils/config.py`):** Replaced manual parsing with a comprehensive Pydantic schema validation model (`PathGennieConfig` / `AppConfig`). See [docs/tutorial.md](docs/tutorial.md#3-robust-input-validation).
+
+**Path Refinement & Standalone Weighted Ensemble**
+- **Path Refinement library (`pathrefinement/`):** Added an ensemble-based principal curve pathway refiner (`pathrefinement/refiner.py`), mathematical verification on the Müller-Brown potential, and tutorials. See [pathrefinement/README.md](pathrefinement/README.md).
+- **Standalone Weighted Ensemble framework (`we/`):** Added the standalone Huber-Kim Weighted Ensemble resampler (`we/src/wepath/`) with examples for toy systems and the 1OPJ GPCR system. See [we/README.md](we/README.md).
+- **Unified Command-line Interface (`pathgennie/cli/main.py`):** Exposed a unified command-line entrypoint `pathgennie` to drive runs and setup setups. See [docs/index.md](docs/index.md).
+- **Conformation utilities (`pathgennie/utils/`):** Added `ligconfgen.py` and `ligcvgen.py` for ligand conformation generation and collective variable analysis.
+
+**Enhanced OpenMM Driver Support**
+- **Dynamic PCA dimension changes:** Added support to `PathGennieDriver` and progress metrics (`EscapeMetric` and `TargetMetric` in `pathgennie/core/progress.py`) to handle dimension reductions on the fly using NaN masking and implicit shape alignment.
+- **Equilibration steps:** Added support to run equilibration steps prior to path generation (via `equilibration_steps` key under `md:` in `input.yaml`). See [README.md](README.md#4-md-parameters-md).
+- **PLUMED integration:** Added support for PLUMED-based force fields via `plumed_file` parameter in OpenMM.
+- **Custom system builders:** Added support to dynamically load custom OpenMM system maker functions via `system_file` config.
+- **GROMACS files support:** Added GROMACS `.top`/`.itp`/`.gro` file parsing and coordinate loading support inside OpenMM runner.
+
+### Changed
+- Replaced `yaml.safe_load` config loading in all backends (AMBER, GROMACS, OpenMM) with Pydantic `load_config` validator to fail-fast on malformed parameters.
+- Re-architected `PathGennieDriver` and `CallableProjection` to forward `cycle` index parameters to custom CV projection functions (enabling time/cycle-dependent CV spaces).
+
 ## [0.2.0] — 2026-06-15
 
 This release re-architects PathGennie around a single, backend-independent core
@@ -141,5 +169,6 @@ Weighted Ensemble stage. Existing `input.yaml` cases continue to run unchanged.
 - Initial PathGennie release: direction-guided adaptive sampling with separate
   OpenMM, AMBER, and GROMACS runners driven by per-case `input.yaml` files.
 
+[1.2.0]: https://github.com/TeamSuman/PathGennie/compare/v0.2.0...v1.2.0
 [0.2.0]: https://github.com/TeamSuman/PathGennie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/TeamSuman/PathGennie/releases/tag/v0.1.0

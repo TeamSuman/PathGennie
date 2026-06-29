@@ -20,14 +20,15 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
+from typing import Any, Mapping
 
 import numpy as np
-import yaml
 
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool
 from pathgennie.core.progress import EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
+from pathgennie.utils.config import load_config
 
 from .utils import (
     enrich_args,
@@ -51,7 +52,7 @@ def write_mdp(
     path: Path,
     nsteps: int,
     temperature: float,
-    controls: dict[str, object],
+    controls: Mapping[str, Any],
     *,
     generate_velocities: bool,
     random_seed: int,
@@ -77,7 +78,7 @@ def write_mdp(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def format_ref_t(controls: dict[str, object], temperature: float) -> str | float:
+def format_ref_t(controls: Mapping[str, Any], temperature: float) -> str | float:
     tc_groups = str(controls.get("tc-grps", "")).split()
     if len(tc_groups) <= 1:
         return float(temperature)
@@ -99,8 +100,8 @@ def normalize_mdp_key(key: object) -> str:
     return str(key).strip().replace("_", "-")
 
 
-def normalize_mdp_controls(controls: dict[str, object]) -> dict[str, object]:
-    normalized: dict[str, object] = {}
+def normalize_mdp_controls(controls: Mapping[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
     for key, value in controls.items():
         mdp_key = normalize_mdp_key(key)
         if mdp_key in IGNORED_AMBER_MDP_KEYS:
@@ -144,7 +145,7 @@ class CoreGromacsEngine:
         executable: Path,
         scratch_dir: Path,
         temperature: float,
-        mdp_controls: dict[str, object],
+        mdp_controls: Mapping[str, Any],
         maxwarn: int = 1,
         grompp_args: list[str] | None = None,
         mdrun_args: list[str] | None = None,
@@ -154,7 +155,7 @@ class CoreGromacsEngine:
         self.scratch_dir = Path(scratch_dir)
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
         self.temperature = float(temperature)
-        self.mdp_controls = mdp_controls
+        self.mdp_controls = dict(mdp_controls)
         self.maxwarn = int(maxwarn)
         self.grompp_args = grompp_args or []
         self.mdrun_args = mdrun_args or []
@@ -166,13 +167,13 @@ class CoreGromacsEngine:
             n = next(self._counter)
         return f"{n}_{uuid.uuid4().hex[:8]}"
 
-    def _device_dir(self, device):
+    def _device_dir(self, device: int | None) -> Path:
         name = "dev_cpu" if device is None else f"dev{device}"
         path = self.scratch_dir / name
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def clone_anchor(self, handle):
+    def clone_anchor(self, handle: str) -> str:
         src_gro = Path(handle)
         src_cpt = src_gro.with_suffix(".cpt")
         dst_gro = self.scratch_dir / f"anchor_{self._uid()}.gro"
@@ -181,7 +182,7 @@ class CoreGromacsEngine:
             dst_gro.with_suffix(".cpt").write_bytes(src_cpt.read_bytes())
         return str(dst_gro)
 
-    def run_segment(self, handle, n_steps, *, randomize_velocities, seed, device=None):
+    def run_segment(self, handle: str, n_steps: int, *, randomize_velocities: bool, seed: int, device: int | None = None) -> str:
         is_tau2 = not randomize_velocities
         workdir = self._device_dir(device)
         stem = f"seg_{self._uid()}"
@@ -218,13 +219,13 @@ class CoreGromacsEngine:
         self._run(mdrun_cmd, "mdrun", env)
         return str(out_gro)
 
-    def get_coords(self, handle):
+    def get_coords(self, handle: str) -> np.ndarray:
         coords = read_gro_coords(handle)
         if not np.all(np.isfinite(coords)):
             raise ValueError(f"GROMACS segment produced non-finite coordinates: {handle}")
         return coords
 
-    def release(self, handle):
+    def release(self, handle: str) -> None:
         gro = Path(handle)
         for sibling in gro.parent.glob(gro.with_suffix("").name + ".*"):
             try:
@@ -232,7 +233,7 @@ class CoreGromacsEngine:
             except OSError:
                 pass
 
-    def _run(self, cmd, stage, env):
+    def _run(self, cmd: list[str], stage: str, env: Mapping[str, str]) -> None:
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
         except subprocess.CalledProcessError as exc:
@@ -250,7 +251,8 @@ class CoreGromacsEngine:
 def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     case_dir = case_dir.resolve()
     os.chdir(case_dir)
-    cfg = yaml.safe_load((case_dir / config_name).read_text(encoding="utf-8"))
+    cfg_model = load_config(case_dir / config_name)
+    cfg = cfg_model.model_dump(exclude_none=True)
 
     workdir = resolve_case_path(case_dir, cfg.get("workdir", "pathgennie_gmx_run"))
     scratch_dir = workdir / "scratch"

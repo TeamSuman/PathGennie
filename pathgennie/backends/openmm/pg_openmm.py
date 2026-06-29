@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-import yaml
 from openmm import LangevinMiddleIntegrator, Platform, unit
 from openmm.app import PME, AmberInpcrdFile, AmberPrmtopFile, HBonds, Simulation
 
@@ -26,6 +25,7 @@ from pathgennie.backends.gromacs.utils import read_topology_info, read_gro_coord
 from openmm.app import GromacsGroFile, GromacsTopFile
 
 from pathgennie.core.strategy import resolve_profile
+from pathgennie.utils.config import load_config
 
 from .pg_omm import PathGennieMD
 
@@ -85,7 +85,8 @@ def build_simulation(
 def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     case_dir = case_dir.resolve()
     os.chdir(case_dir)
-    cfg = yaml.safe_load((case_dir / config_name).read_text(encoding="utf-8"))
+    cfg_model = load_config(case_dir / config_name)
+    cfg = cfg_model.model_dump(exclude_none=True)
 
     workdir = resolve_case_path(case_dir, cfg.get("workdir", "pathgennie_openmm_run"))
     output_dir = workdir / "output"

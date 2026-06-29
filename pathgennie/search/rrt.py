@@ -192,10 +192,8 @@ def rrt_connect(
     Returns the joined start->goal path.
     """
 
-    common = dict(lower=lower, upper=upper, tau1=tau1, tau2=tau2, n_expand=n_expand,
-                  sigma=sigma, goal_bias=0.0, executor=executor)
-    tree_a = RRT(engine, cv_fn, seed=seed, **common)
-    tree_b = RRT(engine, cv_fn, seed=seed + 1, **common)
+    tree_a = RRT(engine, cv_fn, seed=seed, lower=lower, upper=upper, tau1=tau1, tau2=tau2, n_expand=n_expand, sigma=sigma, goal_bias=0.0, executor=executor)
+    tree_b = RRT(engine, cv_fn, seed=seed + 1, lower=lower, upper=upper, tau1=tau1, tau2=tau2, n_expand=n_expand, sigma=sigma, goal_bias=0.0, executor=executor)
     tree_a.add_node(engine.clone_anchor(start_handle), None)
     tree_b.add_node(engine.clone_anchor(goal_handle), None)
 

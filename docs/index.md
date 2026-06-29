@@ -1,4 +1,11 @@
-# PathGennie Manual
+# PathGennie
+
+Welcome to PathGennie! PathGennie is a rapid generation rare-event sampling framework.
+
+## Features
+- **HPC Parallelism**: Easily distribute sampling with MPI and Dask on multi-node clusters.
+- **Asynchronous Storage**: Stream huge trajectories via `h5py` so you never run out of memory.
+- **Robust Configuration**: Clean, validated input configurations using `pydantic`.
 
 PathGennie is a **direction-guided adaptive sampling** method for molecular
 dynamics. From an anchor configuration it launches a *swarm* of short, unbiased

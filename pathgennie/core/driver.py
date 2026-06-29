@@ -87,6 +87,7 @@ class PathGennieDriver:
         max_cycle: int,
         save_freq: int = 10,
         collect_seeds: bool = False,
+        checkpoint_path: Optional[str] = None,
     ):
         """Run the adaptive cycle and return ``(trajectory, metrics)`` arrays.
 
@@ -110,10 +111,19 @@ class PathGennieDriver:
         seed_handles: List[Handle] = []
         last_saved_cycle = -1
 
-        def save_frame(coords: np.ndarray, handle: Handle) -> None:
+        if checkpoint_path is not None:
+            from .storage import HDF5Storage
+            storage = HDF5Storage(checkpoint_path)
+        else:
+            storage = None
+
+        def save_frame(coords: np.ndarray, handle: Handle, metric_val: float) -> None:
             trajectory.append(coords.copy())
             if collect_seeds:
                 seed_handles.append(self.engine.clone_anchor(handle))
+            if storage is not None:
+                storage.append("trajectory", coords)
+                storage.append("metric", np.array([metric_val]))
 
         def worker(trial_index: int, device: Optional[int]) -> TrialResult:
             handle = self.engine.clone_anchor(anchor)
@@ -179,7 +189,7 @@ class PathGennieDriver:
                 observe(coords, cycle)
 
             if cycle % save_freq == 0:
-                save_frame(coords, anchor)
+                save_frame(coords, anchor, metric)
                 last_saved_cycle = cycle
                 if self.verbosity:
                     print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")
@@ -187,7 +197,7 @@ class PathGennieDriver:
             if self.convergence_fn(coords):
                 converged_at = cycle
                 if last_saved_cycle != cycle:  # always keep the converged frame
-                    save_frame(coords, anchor)
+                    save_frame(coords, anchor, metric)
                 if self.verbosity:
                     print(f"Converged at cycle {cycle}")
                 break
@@ -195,6 +205,9 @@ class PathGennieDriver:
         if self.verbosity:
             tail = f" (converged at {converged_at})" if converged_at is not None else ""
             print(f"Final metric: {anchor_metric:.4f}{tail}")
+
+        if storage is not None:
+            storage.close()
 
         if collect_seeds:
             return np.asarray(trajectory), np.asarray(metric_history), seed_handles

@@ -32,6 +32,7 @@ import numpy as np
 from openmm import State, unit
 from openmm.app import Simulation
 
+from pathgennie.core.engine import Handle
 from pathgennie.core.progress import ProgressVariable
 
 NM_TO_ANG = 10.0
@@ -63,19 +64,21 @@ class OpenMMEngine:
         self.sim.context.setVelocitiesToTemperature(self.temperature)
         return self._store(self._snapshot())
 
-    def clone_anchor(self, handle: int) -> int:
+    def clone_anchor(self, handle: Handle) -> Handle:
         # State is immutable; sharing the snapshot is safe.
+        assert isinstance(handle, int)
         return self._store(self._cache[handle])
 
     def run_segment(
         self,
-        handle: int,
+        handle: Handle,
         n_steps: int,
         *,
         randomize_velocities: bool,
         seed: int,
         device: Optional[int] = None,
-    ) -> int:
+    ) -> Handle:
+        assert isinstance(handle, int)
         self.sim.context.setState(self._cache[handle])
         # Seed the integrator's own RNG (e.g. Langevin thermostat noise) so a
         # segment is reproducible; setVelocitiesToTemperature's seed only covers
@@ -89,12 +92,14 @@ class OpenMMEngine:
         self.sim.step(int(n_steps))
         return self._store(self._snapshot())
 
-    def get_coords(self, handle: int) -> np.ndarray:
+    def get_coords(self, handle: Handle) -> np.ndarray:
+        assert isinstance(handle, int)
         pos = self._cache[handle].getPositions(asNumpy=True).value_in_unit(unit.nanometer)  # type: ignore
         coords = np.asarray(pos, dtype=float) * NM_TO_ANG
         if not np.all(np.isfinite(coords)):
             raise ValueError("OpenMM segment produced non-finite coordinates (unstable dynamics?)")
         return coords
 
-    def release(self, handle: int) -> None:
+    def release(self, handle: Handle) -> None:
+        assert isinstance(handle, int)
         self._cache.pop(handle, None)

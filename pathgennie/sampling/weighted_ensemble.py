@@ -52,8 +52,8 @@ class GridBinner:
 
     @classmethod
     def from_values(cls, values: Sequence[float], n_bins: int = 12, pad: float = 0.05) -> "GridBinner":
-        values = np.asarray(values, dtype=float).ravel()
-        lo, hi = float(values.min()), float(values.max())
+        arr_values = np.asarray(values, dtype=float).ravel()
+        lo, hi = float(arr_values.min()), float(arr_values.max())
         if hi <= lo:
             hi = lo + 1.0
         span = hi - lo
@@ -180,7 +180,7 @@ class WeightedEnsembleStage:
         if self.bin_edges is not None:
             binner = GridBinner(self.bin_edges)
         elif ensemble.cv_trajectory is not None:
-            binner = GridBinner.from_values(ensemble.cv_trajectory[:, 0], self.n_bins)
+            binner = GridBinner.from_values(ensemble.cv_trajectory[:, 0].tolist(), self.n_bins)
         else:
             values = [self.cv_fn(f) for f in ensemble.frames]
             binner = GridBinner.from_values(values, self.n_bins)
@@ -199,6 +199,7 @@ class WeightedEnsembleStage:
         # nearest source_cv that is never used as a walker (so it is never freed).
         source_handle: Optional[Handle] = None
         if self.recycle:
+            assert self.source_cv is not None
             cvs = [self._cv(engine, h) for h in seeds]
             nearest = int(np.argmin([abs(c - self.source_cv) for c in cvs]))
             source_handle = engine.clone_anchor(seeds[nearest])
@@ -235,8 +236,9 @@ class WeightedEnsembleStage:
                 walker.cv = self._cv(engine, new_handle)
                 walker.bin = binner.bin_index(walker.cv)
 
-            # Recycle walkers that crossed the target back to the source.
             if self.recycle:
+                assert self.target_cv is not None
+                assert self.source_cv is not None
                 forward = self.target_cv >= self.source_cv
                 for walker in walkers:
                     crossed = walker.cv >= self.target_cv if forward else walker.cv <= self.target_cv
