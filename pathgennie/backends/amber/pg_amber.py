@@ -146,6 +146,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         max_cycle=pg_cfg["max_cycle"],
         save_freq=pg_cfg.get("save_freq", 10),
         collect_seeds=bool(downstream),
+        checkpoint_path=pg_cfg.get("checkpoint_path"),
     )
     seed_handles = None
     if downstream:
