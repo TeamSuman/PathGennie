@@ -37,6 +37,12 @@ HPC paths correct and runnable. See `docs/HPC_REVIEW.md` for the full review.
 ### Added
 - **CPU oversubscription guard** `pathgennie.cpu_threads_per_worker` (pins
   OMP/MKL threads and GROMACS `-ntomp` per worker).
+- **Node-local scratch** `scratch_root` (or `$PATHGENNIE_SCRATCH`) redirects
+  per-segment scratch to node-local disk (`$TMPDIR`); outputs stay in `workdir`.
+- **CI** (`.github/workflows/tests.yml`): base lane + a torch lane that unskips
+  the SPIB/CV tests, plus the HPC self-check.
+- **FES validator**: `benchmarks/we_fes.py::run_validation` + a test asserting
+  the toy Weighted Ensemble recovers the analytic free energy (`r > 0.85`).
 - **HPC test suite** (`tests/hpc/`): PBS + Slurm submission scripts for CPU and
   GPU queues, a dependency-light self-check, a real-backend/multi-GPU runner, and
   a debugging guide for interpreting results.
