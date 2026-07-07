@@ -4,6 +4,45 @@ All notable changes to PathGennie are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Hardening pass that unifies the feature branches onto one line and makes the
+HPC paths correct and runnable. See `docs/HPC_REVIEW.md` for the full review.
+
+### Fixed
+- **Config validation (release-blocking).** `pathgennie/utils/config.py` declared
+  `tau1`/`tau2` while the backends read `tau1_steps`/`tau2_steps`, and used
+  `extra="ignore"` — so every run crashed with `KeyError: 'tau1_steps'` and the
+  `md`/`workdir`/`output` sections (and `devices`, `downstream`, `profile`, …)
+  were silently dropped. Rewrote the schema with real field names, bounds/enum
+  validation, and `extra="allow"`; added `tests/test_config.py`.
+- **On-the-fly SPIB** crashed on cycle 0 (`SPIBProgress.project` missing the
+  `cycle` argument the driver passes). Fixed.
+- **Scheduler-aware GPU placement.** Engines overwrote `CUDA_VISIBLE_DEVICES`
+  with absolute indices, colliding with other jobs on shared Slurm/PBS nodes.
+  Added `resolve_cuda_visible_device()` mapping logical indices onto the
+  allocation; wired into the AMBER/GROMACS engines and the `we` GPU worker.
+- **Reproducibility under the device pool**: per-trial seeds are pre-drawn on the
+  main thread (numpy's Generator is not thread-safe), so a seeded multi-GPU run
+  matches serial.
+- **Scratch/handle leak**: the per-trial cloned anchor is now released (driver and
+  RRT), and handle release compares by value not identity.
+- **HDF5 checkpoint** writer-thread errors are surfaced instead of silently
+  dropping frames.
+- **`import pathrefinement`** works on a base install (lazy torch/openmm imports);
+  fixed a `NameError` in `pathiter`.
+- Removed committed git merge-conflict markers from `README.md`; corrected stale
+  example references.
+
+### Added
+- **CPU oversubscription guard** `pathgennie.cpu_threads_per_worker` (pins
+  OMP/MKL threads and GROMACS `-ntomp` per worker).
+- **HPC test suite** (`tests/hpc/`): PBS + Slurm submission scripts for CPU and
+  GPU queues, a dependency-light self-check, a real-backend/multi-GPU runner, and
+  a debugging guide for interpreting results.
+- **Docs**: `docs/hpc.md` (Slurm/PBS scaling guide) and `docs/HPC_REVIEW.md`
+  (review, WESTPA comparison, SOTA positioning, roadmap); full mkdocs nav.
+
 ## [1.2.0] — 2026-06-29
 
 This release consolidates the high-performance computing (HPC) parallel scaling features, asynchronous streaming checkpointing, and robust input validation with the newly merged **PathCV** (Path Collective Variables), **Path Refinement**, and standalone **Weighted Ensemble** (WE) frameworks.
