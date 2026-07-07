@@ -299,19 +299,23 @@ To be globally competitive:
 
 ## 8. Prioritized roadmap
 
-**P0 — make the promoted release trustworthy (mostly done here).**
+**P0 — make the promoted release trustworthy (done).**
 - [x] Fix config validation, SPIB `cycle`, GPU masking, reproducibility, leaks,
       storage errors, lazy imports, README conflict markers.
-- [ ] Add a torch+OpenMM CI lane; turn benchmarks into pass/fail validators.
-- [ ] Purge the ~90 MB committed artifacts and hardcoded home paths; move `results/`
-      out of version control.
+- [x] Add a CI lane (base + torch, so SPIB/CV tests run instead of skipping);
+      turn the toy WE FES benchmark into a pass/fail validator (`r > 0.85`).
+- [x] Untrack the ~90 MB of committed run outputs and gitignore them;
+      parameterize the hardcoded home paths. *(Remaining: a `git filter-repo`/LFS
+      history rewrite to reclaim the blobs already in history.)*
 
 **P1 — HPC scale-out (the biggest competitive gap).**
+- [x] Node-local scratch via `scratch_root` / `$PATHGENNIE_SCRATCH` (outputs stay
+      on the shared FS). *(Next: make node-local the documented default in job
+      templates — the `tests/hpc` scripts already point `$TMPDIR` there.)*
 - [ ] `work_manager` config abstraction (serial/threads/processes/zmq).
 - [ ] A ZeroMQ/task-queue executor for multi-node with dynamic load balancing
       (fixes multi-node + balancing + the pickling problem together).
 - [ ] Iteration-level checkpoint **and resume** to a central HDF5.
-- [ ] Node-local scratch by default with copy-back.
 - [ ] OpenMM `ProcessDevicePool` (multi-GPU in-process) + platform-properties
       (precision/deterministic forces/device index).
 

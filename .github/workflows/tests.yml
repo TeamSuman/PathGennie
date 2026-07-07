@@ -1,0 +1,48 @@
+name: tests
+
+on:
+  push:
+    branches: [main, devel]
+  pull_request:
+
+jobs:
+  # Core suite: numpy/pydantic/h5py only. Tests that need OpenMM/torch skip
+  # themselves. This lane would have caught the config-validation regression.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install (no heavy deps)
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pydantic PyYAML h5py pytest
+          pip install -e . --no-deps
+      - name: Run test suite
+        run: pytest -q tests --ignore tests/hpc
+      - name: HPC self-check (no MD binary / GPU needed)
+        run: python tests/hpc/hpc_selfcheck.py --skip-unit-tests
+
+  # ML lane: installs torch so the SPIB / on-the-fly CV tests actually run
+  # instead of being skipped (the class of gap that hid the SPIB cycle bug).
+  test-ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install with torch (CPU)
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pydantic PyYAML h5py pytest
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e . --no-deps
+      - name: Run CV/SPIB tests (now unskipped)
+        run: pytest -q tests/test_spib.py tests/test_cv.py tests/test_features.py

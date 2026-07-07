@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,7 +19,7 @@ COMMON = ROOT / "common"
 AMBER = ROOT / "amber"
 GROMACS = ROOT / "gromacs"
 OPENMM = ROOT / "openmm"
-TLEAP = shutil.which("tleap") or "/home/dm/Soft/miniconda3/envs/pg/bin/tleap"
+TLEAP = shutil.which("tleap") or os.environ.get("TLEAP", "tleap")
 
 
 def run_cmd(cmd: list[str], cwd: Path) -> None:

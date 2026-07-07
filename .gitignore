@@ -210,3 +210,7 @@ __marimo__/
 tests/hpc/results/
 pg-*-*.out
 pg-*-*.err
+
+# Generated example run outputs (regenerable; inputs are kept)
+**/pathgennie_*_run/
+pathrefinement/examples/*/results/

@@ -29,6 +29,7 @@ from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_devi
 from pathgennie.core.progress import EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
 from pathgennie.utils.config import load_config
+from pathgennie.utils.scratch import resolve_scratch_dir
 
 from .utils import (
     enrich_args,
@@ -259,7 +260,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     cfg = cfg_model.model_dump(exclude_none=True)
 
     workdir = resolve_case_path(case_dir, cfg.get("workdir", "pathgennie_gmx_run"))
-    scratch_dir = workdir / "scratch"
+    scratch_dir = resolve_scratch_dir(workdir, cfg.get("scratch_root"))
     output_dir = workdir / "output"
     if scratch_dir.exists():
         shutil.rmtree(scratch_dir)

@@ -95,6 +95,9 @@ class AppConfig(BaseModel):
     md: Optional[Dict[str, Any]] = None
     output: Optional[Dict[str, Any]] = None
     workdir: Optional[str] = None
+    scratch_root: Optional[str] = Field(
+        None, description="Place per-segment scratch here (e.g. node-local $TMPDIR) instead of workdir/scratch"
+    )
 
 
 def load_config(filepath: Path | str) -> AppConfig:

@@ -11,7 +11,7 @@ from pathgennie.backends.openmm import PathGennieMD
 from common import load_coords, create_chignolin_system, get_calpha_indices, compute_pairwise_distances
 
 def main():
-    base_dir = "/home/dm/Dibyendu/Projects/GitHub/PathGennie/pathrefinement/examples/CLN025/"
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # portable: this scripts dir
     prmtop_file = os.path.join(base_dir, "chignolin.prmtop")
     
     in_pdb = os.path.join(os.path.dirname(__file__), "results", "initial_path", "initial_path.pdb")

@@ -57,13 +57,19 @@ pathgennie/
   agent/        Rule-based agentic controller (adaptive N / tau1 / tau2)
   sampling/     Enhanced-sampling stages on one contract (PathEnsemble +
                 SamplingStage): path-informed Weighted Ensemble and OPES (PLUMED)
+  utils/        Config validation, node-local scratch, ligand conformation /
+                PCA distance-CV generation (LigPCGen, `pcagen` CLI)
   backends/
     amber/      Device-aware AMBER engine + runner
     gromacs/    Device-aware GROMACS engine + runner
     openmm/     OpenMM in-process engine + runner
+pathrefinement/  Path CVs (Branduardi s/z) + ensemble principal-curve path
+                 refiner, with Muller-Brown / AlaD / CLN025 examples
+we/              Standalone Huber-Kim Weighted Ensemble framework (wepath)
 docs/           Manual + tutorials (start at docs/index.md)
-tests/          pytest suite (69 tests; selection, CV, I/O, device dispatch,
-                SPIB, RRT, roadmap, controller, WE, OPES)
+tests/          pytest suite (96 tests; selection, CV, I/O, device dispatch,
+                SPIB, RRT, roadmap, controller, WE, config, HPC parallel safety)
+  hpc/          PBS + Slurm submission scripts + self-check for cluster testing
 benchmarks/
   scaling.py    Device-pool scaling benchmark
   we_fes.py     WE free-energy validation vs the analytic Wolfe-Quapp marginal
@@ -89,7 +95,9 @@ Full manual and tutorials live in [`docs/`](docs/index.md); release notes in
 [strategy profiles](docs/strategy-profiles.md), [SPIB CV](docs/data-driven-cv.md),
 [RRT search](docs/non-linear-search.md), [roadmap graph](docs/roadmap-graph.md),
 [agentic controller](docs/agent.md), [Weighted Ensemble](docs/weighted-ensemble.md),
-and [OPES](docs/opes.md).
+[OPES](docs/opes.md), [path CVs](docs/path-cv.md),
+[path refinement](docs/path-refinement.md), [PCA CV space](docs/pca-cv.md),
+and the [HPC guide](docs/hpc.md).
 
 ## Installation
 
@@ -398,6 +406,27 @@ conformational graph and extracts the minimum-free-energy and competing pathways
 between metastable states (Dijkstra + Yen), and `pathgennie.agent` provides a
 rule-based controller that adapts the swarm size and segment lengths on the fly.
 See the [docs](docs/index.md) for details and tutorials.
+
+## Path CVs & Path Refinement
+
+The `pathrefinement/` package adds **path collective variables** and a
+**path-refinement** workflow on top of the discovery loop:
+
+- **Path CVs (`s`, `z`)** — `pathrefinement.PathCV` implements the Branduardi
+  path collective variables (progress *along* a reference path, `s`, and distance
+  *off* it, `z`). Use them as a progress CV to follow or stay on a known channel.
+  See [`docs/path-cv.md`](docs/path-cv.md).
+- **Path refinement** — `pathrefinement.PathRefiner` turns a rough initial path
+  (e.g. one PathGennie discovers) into a smooth, representative path by
+  alternating short MD exploration with a machine-learned principal-curve
+  consensus. Runnable numbered examples for the Müller-Brown potential, alanine
+  dipeptide, and chignolin live in `pathrefinement/examples/`. See
+  [`docs/path-refinement.md`](docs/path-refinement.md) and
+  [`pathrefinement/README.md`](pathrefinement/README.md). *(Needs the `ml` extra
+  + OpenMM.)*
+- **Artificial PCA distance-CV space** — `pathgennie pcagen` builds a robust PCA
+  distance-CV space for host–guest / protein–ligand systems and reports the
+  dimension of maximum separation. See [`docs/pca-cv.md`](docs/pca-cv.md).
 
 ## Writing a New Case
 

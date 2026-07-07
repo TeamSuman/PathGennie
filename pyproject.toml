@@ -73,3 +73,9 @@ version = { attr = "pathgennie.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["pathgennie*", "pathrefinement*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "slow: longer-running validators (deselect with '-m \"not slow\"')",
+]
