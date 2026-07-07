@@ -10,7 +10,7 @@ from pathrefinement.principal_curve import PrincipalCurve
 from common import load_coords, get_calpha_indices, compute_pairwise_distances
 
 def main():
-    base_dir = "/home/dm/Dibyendu/Projects/GitHub/PathGennie/pathrefinement/examples/CLN025/"
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # portable: this scripts dir
     prmtop_file = os.path.join(base_dir, "chignolin.prmtop")
     refine_dir = os.path.join(base_dir, "results", "refinement")
     init_pdb = os.path.join(base_dir, "results", "initial_path", "initial_path.pdb")

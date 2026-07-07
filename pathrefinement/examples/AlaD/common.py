@@ -26,7 +26,7 @@ def load_coords(file_path, topology_file=None):
     return coords # (N_frames, N, 3)
 
 def create_alad_system(gro_file, top_file, device=0):
-    ffdir = "/home/dm/Soft/GMX26/share/gromacs/top"
+    ffdir = os.environ.get("GMXFFDIR", "/usr/share/gromacs/top")  # override via $GMXFFDIR
     gro = app.GromacsGroFile(gro_file)
     top = app.GromacsTopFile(
         top_file,
@@ -67,7 +67,7 @@ def create_alad_system(gro_file, top_file, device=0):
     return simulation
 
 def get_heavy_indices(gro_file, top_file):
-    ffdir = "/home/dm/Soft/GMX26/share/gromacs/top"
+    ffdir = os.environ.get("GMXFFDIR", "/usr/share/gromacs/top")  # override via $GMXFFDIR
     gro = app.GromacsGroFile(gro_file)
     top = app.GromacsTopFile(
         top_file,

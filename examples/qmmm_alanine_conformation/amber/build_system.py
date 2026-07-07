@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -14,7 +15,7 @@ from openmm.app import AmberInpcrdFile, AmberPrmtopFile, HBonds, PME, Simulation
 
 
 ROOT = Path(__file__).resolve().parent
-TLEAP = shutil.which("tleap") or "/home/dm/Soft/miniconda3/envs/pg/bin/tleap"
+TLEAP = shutil.which("tleap") or os.environ.get("TLEAP", "tleap")
 
 
 def run_cmd(cmd: list[str], cwd: Path = ROOT) -> None:

@@ -33,8 +33,12 @@ def analytic_marginal(y_grid, kT):
     return fe - fe.min()
 
 
-def main():
-    kT = 2.0
+def run_validation(n_iterations: int = 400, kT: float = 2.0):
+    """Run toy WE and return recovered vs analytic FES plus their correlation.
+
+    Deterministic (fixed seeds), so it doubles as a CI validator — see
+    ``tests/test_we_fes_validator.py``.
+    """
     engine = ToyLangevinEngine(dt=0.005, kT=kT)
     initial = engine.create_state((-1.0, -1.4))
     progress = EscapeMetric(lambda c: np.array([c[0, 1]]), start_cv=np.array([-1.4]), escape_metric="cv0")
@@ -48,26 +52,28 @@ def main():
     ens = build_path_ensemble(traj, metrics, handles=handles, cv_fn=lambda c: c[0, 1])
 
     stage = WeightedEnsembleStage(
-        cv_fn=lambda c: c[0, 1], tau_steps=10, n_iterations=400,
+        cv_fn=lambda c: c[0, 1], tau_steps=10, n_iterations=n_iterations,
         n_bins=16, target_count=6, seed=1, kT=kT,
     )
     result = stage.run(ens, engine)
 
-    centers = result.metadata["bin_centers"]
-    fe_we = result.free_energy
+    centers = np.asarray(result.metadata["bin_centers"])
+    fe_we = np.asarray(result.free_energy)
     finite = np.isfinite(fe_we)
     fe_an = analytic_marginal(centers, kT)
 
-    print(f"{'y':>8} {'F_WE':>10} {'F_analytic':>12}")
-    for c, a, w, ok in zip(centers, fe_an, fe_we, finite):
-        print(f"{c:>8.3f} {('%.3f' % w) if ok else '   inf':>10} {a:>12.3f}")
-
-    # Correlation over occupied bins (shifted).
     we = fe_we[finite] - fe_we[finite].min()
     an = fe_an[finite] - fe_an[finite].min()
-    if we.size > 2:
-        corr = np.corrcoef(we, an)[0, 1]
-        print(f"\nPearson correlation (occupied bins): {corr:.3f}")
+    corr = float(np.corrcoef(we, an)[0, 1]) if we.size > 2 else float("nan")
+    return {"centers": centers, "fe_we": fe_we, "fe_an": fe_an, "finite": finite, "corr": corr}
+
+
+def main():
+    out = run_validation()
+    print(f"{'y':>8} {'F_WE':>10} {'F_analytic':>12}")
+    for c, a, w, ok in zip(out["centers"], out["fe_an"], out["fe_we"], out["finite"]):
+        print(f"{c:>8.3f} {('%.3f' % w) if ok else '   inf':>10} {a:>12.3f}")
+    print(f"\nPearson correlation (occupied bins): {out['corr']:.3f}")
 
 
 if __name__ == "__main__":
