@@ -25,7 +25,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from pathgennie.core.driver import PathGennieDriver
-from pathgennie.core.parallel import ThreadDevicePool
+from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_device
 from pathgennie.core.progress import EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
 from pathgennie.utils.config import load_config
@@ -149,6 +149,7 @@ class CoreGromacsEngine:
         maxwarn: int = 1,
         grompp_args: list[str] | None = None,
         mdrun_args: list[str] | None = None,
+        env_overrides: Mapping[str, Any] | None = None,
     ):
         self.topology = str(topology)
         self.exe = str(executable)
@@ -159,6 +160,7 @@ class CoreGromacsEngine:
         self.maxwarn = int(maxwarn)
         self.grompp_args = grompp_args or []
         self.mdrun_args = mdrun_args or []
+        self.env_overrides = {str(k): str(v) for k, v in (env_overrides or {}).items()}
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -200,8 +202,10 @@ class CoreGromacsEngine:
         )
 
         env = os.environ.copy()
-        if device is not None:
-            env["CUDA_VISIBLE_DEVICES"] = str(device)
+        visible = resolve_cuda_visible_device(device, os.environ)
+        if visible is not None:
+            env["CUDA_VISIBLE_DEVICES"] = visible
+        env.update(self.env_overrides)
 
         grompp_cmd = [
             self.exe, "grompp", "-f", str(mdp), "-c", str(in_gro), "-p", self.topology,
@@ -295,6 +299,21 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     mdrun_args = [str(arg) for arg in gmx_cfg.get("mdrun_args", [])]
     grompp_args, mdrun_args = split_grompp_only_args(grompp_args, mdrun_args)
 
+    # Guard against CPU oversubscription: with several concurrent mdrun segments
+    # each would otherwise claim every core. cpu_threads_per_worker pins the
+    # per-worker OpenMP thread count (env + an explicit -ntomp if not already set).
+    env_overrides = {}
+    cpu_threads = pg_cfg.get("cpu_threads_per_worker")
+    if cpu_threads:
+        n_threads = str(int(cpu_threads))
+        env_overrides = {
+            "OMP_NUM_THREADS": n_threads,
+            "MKL_NUM_THREADS": n_threads,
+            "OPENBLAS_NUM_THREADS": n_threads,
+        }
+        if "-ntomp" not in mdrun_args:
+            mdrun_args = mdrun_args + ["-ntomp", n_threads]
+
     proj_fn = load_function(case_dir, cfg["projection"]["module"], cfg["projection"]["function"])
     conv_fn = load_function(case_dir, cfg["convergence"]["module"], cfg["convergence"]["function"])
 
@@ -338,6 +357,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         maxwarn=gmx_cfg.get("maxwarn", 1),
         grompp_args=grompp_args,
         mdrun_args=mdrun_args,
+        env_overrides=env_overrides,
     )
 
     devices = pg_cfg.get("devices", gmx_cfg.get("devices"))

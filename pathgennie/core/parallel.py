@@ -28,13 +28,22 @@ specialisation built on the same ``ParallelExecutor`` contract; see
 
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional, Protocol, Sequence, TypeVar
+from typing import Callable, List, Mapping, Optional, Protocol, Sequence, TypeVar
 
 T = TypeVar("T")
 R = TypeVar("R")
 
-__all__ = ["ParallelExecutor", "SerialExecutor", "ThreadDevicePool", "MPIExecutor", "DaskExecutor", "resolve_devices"]
+__all__ = [
+    "ParallelExecutor",
+    "SerialExecutor",
+    "ThreadDevicePool",
+    "MPIExecutor",
+    "DaskExecutor",
+    "resolve_devices",
+    "resolve_cuda_visible_device",
+]
 
 
 def resolve_devices(devices: Optional[Sequence[int]]) -> List[Optional[int]]:
@@ -47,6 +56,34 @@ def resolve_devices(devices: Optional[Sequence[int]]) -> List[Optional[int]]:
     if not devices:
         return [None]
     return [int(d) for d in devices]
+
+
+def resolve_cuda_visible_device(
+    device: Optional[int], environ: Optional[Mapping[str, str]] = None
+) -> Optional[str]:
+    """Map a logical device index to the ``CUDA_VISIBLE_DEVICES`` value to export.
+
+    On a shared HPC node a scheduler (Slurm ``--gres=gpu:N`` / cgroups, PBS
+    ``$PBS_GPUFILE``) hands each job a *subset* of the node's GPUs by presetting
+    ``CUDA_VISIBLE_DEVICES`` — e.g. ``"2,3"`` or a list of GPU UUIDs. Overwriting
+    that with an absolute index (``"0"``) would target a GPU the job was **not**
+    allocated, colliding with another user's job. So when a mask is already
+    present, a logical ``device`` index is interpreted as a position *within the
+    allocation* (``tokens[device % len(tokens)]``) and the resolved token is
+    returned. Without a mask (single-GPU workstation, or a job given the whole
+    node) the index is used as an absolute id.
+
+    Returns ``None`` when ``device`` is ``None`` (let the engine choose).
+    """
+
+    if device is None:
+        return None
+    environ = os.environ if environ is None else environ
+    base = environ.get("CUDA_VISIBLE_DEVICES", "") or ""
+    tokens = [tok.strip() for tok in base.split(",") if tok.strip() != ""]
+    if tokens:
+        return tokens[int(device) % len(tokens)]
+    return str(int(device))
 
 
 class ParallelExecutor(Protocol):

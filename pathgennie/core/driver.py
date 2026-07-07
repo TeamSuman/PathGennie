@@ -125,19 +125,32 @@ class PathGennieDriver:
                 storage.append("trajectory", coords)
                 storage.append("metric", np.array([metric_val]))
 
+        cycle_seeds: List[int] = []
+
         def worker(trial_index: int, device: Optional[int]) -> TrialResult:
             handle = self.engine.clone_anchor(anchor)
             seg = self.engine.run_segment(
-                handle, tau1, randomize_velocities=True, seed=self._seed(), device=device
+                handle, tau1, randomize_velocities=True, seed=cycle_seeds[trial_index], device=device
             )
             coords = self.engine.get_coords(seg)
             cv, metric = self._evaluate(coords, cycle=cycle)
+            # The cloned anchor was only the *input* to this segment; run_segment
+            # returned a fresh handle (seg), so release the clone now. Otherwise
+            # one clone (a scratch restart file for AMBER/GROMACS, a cache entry
+            # for OpenMM) leaks per trial per cycle and fills scratch on long runs.
+            if seg != handle:
+                self.engine.release(handle)
             return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords)
 
         converged_at: Optional[int] = None
         for cycle in range(max_cycle):
             previous_anchor = anchor
 
+            # Draw all per-trial seeds up front on the main thread so the
+            # seed -> trial mapping is deterministic regardless of executor
+            # scheduling (numpy's Generator is not thread-safe). This makes a
+            # seeded run reproducible under ThreadDevicePool, matching Serial.
+            cycle_seeds = [self._seed() for _ in range(max_trial)]
             trials = self.executor.map(worker, list(range(max_trial)))
             metrics = np.array([t.metric for t in trials], dtype=float)
             chosen_idx = softmax_select(metrics, self.sigma, self.rng)
@@ -172,10 +185,13 @@ class PathGennieDriver:
                 new_anchor, coords, cv, metric = cand_handle, cand_coords, cand_cv, cand_metric
 
             # ---- release everything we are not keeping ----
+            # Compare handles by value (==), not identity (is): handles may be
+            # plain ints (CPython caches only -5..256) or round-trip through a
+            # distributed executor, so `is` would leak or double-release.
             for index, trial in enumerate(trials):
-                if trial.handle is not new_anchor and not (index == chosen_idx and cand_handle is chosen.handle):
+                if trial.handle != new_anchor and not (index == chosen_idx and cand_handle == chosen.handle):
                     self.engine.release(trial.handle)
-            if new_anchor is not previous_anchor and previous_anchor is not initial_handle:
+            if new_anchor != previous_anchor and previous_anchor != initial_handle:
                 self.engine.release(previous_anchor)
 
             anchor, anchor_coords, anchor_cv, anchor_metric = new_anchor, coords, cv, metric

@@ -28,6 +28,8 @@ from typing import Optional
 
 import numpy as np
 
+from pathgennie.core.parallel import resolve_cuda_visible_device
+
 from .utils import read_rst7_coords, write_mdin
 
 __all__ = ["CoreAmberEngine"]
@@ -44,6 +46,7 @@ class CoreAmberEngine:
         mdin_controls: dict,
         extra_mdin_text: str = "",
         command_prefix: Optional[list] = None,
+        env_overrides: Optional[dict] = None,
     ):
         self.topology = str(topology)
         self.exe = str(executable)
@@ -53,6 +56,7 @@ class CoreAmberEngine:
         self.mdin_controls = mdin_controls
         self.extra_mdin_text = extra_mdin_text
         self.command_prefix = command_prefix or []
+        self.env_overrides = {str(k): str(v) for k, v in (env_overrides or {}).items()}
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -100,8 +104,10 @@ class CoreAmberEngine:
             cmd.extend(["-x", str(workdir / f"{stem}.nc")])
 
         env = os.environ.copy()
-        if device is not None:
-            env["CUDA_VISIBLE_DEVICES"] = str(device)
+        visible = resolve_cuda_visible_device(device, os.environ)
+        if visible is not None:
+            env["CUDA_VISIBLE_DEVICES"] = visible
+        env.update(self.env_overrides)
 
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)

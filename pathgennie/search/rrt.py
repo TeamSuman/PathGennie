@@ -112,9 +112,15 @@ class RRT:
 
         def worker(seg_seed, device):
             handle = self.engine.clone_anchor(node.handle)
-            return self.engine.run_segment(
+            seg = self.engine.run_segment(
                 handle, self.tau1, randomize_velocities=True, seed=seg_seed, device=device
             )
+            # Release the cloned-anchor input; the segment output (seg) is a new
+            # handle. Without this every expansion leaks one clone (a scratch
+            # restart file / engine-cache entry), filling scratch on long searches.
+            if seg != handle:
+                self.engine.release(handle)
+            return seg
 
         trials = self.executor.map(worker, seg_seeds)
         cvs = [self._cv(t) for t in trials]

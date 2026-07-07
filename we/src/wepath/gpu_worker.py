@@ -60,7 +60,17 @@ class GPUWorker(mp.Process):
         self._init_simulation()
 
     def run(self):
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
+        # Respect a scheduler-provided GPU allocation. If CUDA_VISIBLE_DEVICES is
+        # already set (Slurm --gres=gpu / PBS), treat gpu_id as a position within
+        # that allocation rather than overwriting it with an absolute index --
+        # otherwise the worker targets a GPU this job was not granted and
+        # collides with another user's job on a shared node.
+        base = os.environ.get("CUDA_VISIBLE_DEVICES", "") or ""
+        tokens = [tok.strip() for tok in base.split(",") if tok.strip() != ""]
+        if tokens:
+            os.environ["CUDA_VISIBLE_DEVICES"] = tokens[int(self.gpu_id) % len(tokens)]
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         self._init_simulation()
 

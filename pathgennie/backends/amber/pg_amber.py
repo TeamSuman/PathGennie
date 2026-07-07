@@ -112,6 +112,19 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     def convergence(coords: np.ndarray) -> bool:
         return bool(conv_fn(coords, **convergence_args))
 
+    # Guard against CPU oversubscription: when several segments run concurrently
+    # (workers_per_device > 1 on CPU, or an MPI/threaded pmemd), each subprocess
+    # otherwise grabs every core. cpu_threads_per_worker pins per-worker threads.
+    env_overrides = {}
+    cpu_threads = pg_cfg.get("cpu_threads_per_worker")
+    if cpu_threads:
+        n_threads = str(int(cpu_threads))
+        env_overrides = {
+            "OMP_NUM_THREADS": n_threads,
+            "MKL_NUM_THREADS": n_threads,
+            "OPENBLAS_NUM_THREADS": n_threads,
+        }
+
     engine = CoreAmberEngine(
         topology=topology,
         executable=executable,
@@ -120,6 +133,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         mdin_controls=mdin_controls,
         extra_mdin_text=extra_mdin_text,
         command_prefix=command_prefix,
+        env_overrides=env_overrides,
     )
 
     # Device pool: `devices` lists GPU indices; falls back to legacy tau1_workers.
