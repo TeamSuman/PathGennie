@@ -2,10 +2,10 @@
 
 from typing import TYPE_CHECKING
 
-__all__ = ["GenericGromacsEngine", "GenericPathGennieGromacs", "run"]
+__all__ = ["CoreGromacsEngine", "run"]
 
 if TYPE_CHECKING:
-    from .pg_gmx import GenericGromacsEngine, GenericPathGennieGromacs, run
+    from .pg_gmx import CoreGromacsEngine, run
 
 
 def __getattr__(name: str):

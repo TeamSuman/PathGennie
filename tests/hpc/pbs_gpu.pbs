@@ -1,0 +1,60 @@
+#!/bin/bash
+# =============================================================================
+# PathGennie HPC test — PBS / Torque / PBSPro, GPU queue (single node, multi-GPU)
+# -----------------------------------------------------------------------------
+# Submit with:  qsub tests/hpc/pbs_gpu.pbs
+# Results land in tests/hpc/results/<jobid>/. The multi-GPU spread check applies
+# to AMBER/GROMACS only (OpenMM is single-GPU by design). See DEBUGGING.md.
+# =============================================================================
+#PBS -N pg-gpu-test
+#PBS -l select=1:ncpus=8:ngpus=2:mem=32gb   # EDIT: PBSPro; request >=2 GPUs for the spread check
+###PBS -l nodes=1:ppn=8:gpus=2               # EDIT: Torque syntax alternative
+#PBS -l walltime=00:30:00                    # EDIT: walltime
+#PBS -j oe
+###PBS -q gpu                                # EDIT: uncomment + set your GPU queue
+###PBS -A YOUR_ACCOUNT                        # EDIT: uncomment + set your allocation
+
+set -euo pipefail
+
+# --- EDIT: environment setup -------------------------------------------------
+# module load cuda/12.4 amber/24             # or gromacs/2024-cuda
+# source ~/miniconda3/etc/profile.d/conda.sh && conda activate pathgennie
+# -----------------------------------------------------------------------------
+
+# --- EDIT: what to run -------------------------------------------------------
+PG_REPO="${PBS_O_WORKDIR:-$PWD}"
+PG_BACKEND="${PG_BACKEND:-amber}"            # amber | gromacs
+PG_EXAMPLE="${PG_EXAMPLE:-examples/alanine_dipeptide/amber}"
+PG_EXE="${PG_EXE:-$(command -v pmemd.cuda || true)}"
+DEVICES="${DEVICES:-0,1}"                     # logical; masked onto the allocation
+WORKERS="${WORKERS:-2}"
+# -----------------------------------------------------------------------------
+
+cd "$PG_REPO"
+JOBID="${PBS_JOBID:-local}"
+RESULTS="tests/hpc/results/${JOBID%%.*}"
+mkdir -p "$RESULTS"
+
+echo "### PathGennie PBS GPU test — job $JOBID on $(hostname)"
+# On many PBS clusters the GPU allocation is exposed via $PBS_GPUFILE, not
+# CUDA_VISIBLE_DEVICES. If CUDA_VISIBLE_DEVICES is unset but PBS_GPUFILE exists,
+# derive the mask so PathGennie's scheduler-aware routing stays within it.
+if [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && [ -n "${PBS_GPUFILE:-}" ] && [ -f "$PBS_GPUFILE" ]; then
+  export CUDA_VISIBLE_DEVICES="$(awk -F- '{print $NF}' "$PBS_GPUFILE" | paste -sd, -)"
+  echo "### Derived CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES from PBS_GPUFILE"
+fi
+echo "### CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>} backend=$PG_BACKEND devices=$DEVICES"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv || true
+
+python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json"
+
+if [ -n "$PG_EXE" ]; then
+  python tests/hpc/run_example.py \
+    --backend "$PG_BACKEND" --example "$PG_EXAMPLE" --executable "$PG_EXE" \
+    --devices "$DEVICES" --workers-per-device "$WORKERS" --max-cycle 10 \
+    --monitor-gpu --out "$RESULTS/gpu_spread.json" || echo "GPU run FAILED (see $RESULTS/gpu_spread.json)"
+else
+  echo "PG_EXE not set / GPU MD binary not found — skipping GPU run." | tee "$RESULTS/gpu_spread.skipped"
+fi
+
+echo "### Done. Results in $RESULTS/"

@@ -8,14 +8,18 @@ gromacs:
     executable: /home/dm/Soft/GMX26/bin/gmx
     reference_template: box.gro
     mdrun_args:
+        - -nt
+        - 10
         - -nb
-        - gpu
+        - cpu
+        - -update
+        - cpu
         - -bonded
-        - gpu
-        - -pin
-        - "on"
+        - cpu
         - -n
         - index.ndx
+        - -plumed 
+        - constraint.dat
     # For an MPI Amber executable, use e.g.:
     # executable: /path/to/pmemd.MPI
     # mpi_launcher: mpirun
@@ -31,7 +35,7 @@ pathgennie:
     max_trial: 10
     # Number of independent tau1 walkers to run at the same time.
     # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
-    tau1_workers: 1
+    tau1_workers: 10
     # max_cycle: Maximum escape cycles before stopping
     max_cycle: 5000
     # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)
@@ -47,10 +51,9 @@ md:
 
 projection:
     # CV: mass-weighted COM-COM distance between host and guest residues
-    module: projection
-    function: com_com_distance_cv
-    group_a_resname: OCB
-    group_b_resname: MOL
+    module: plumed_cv
+    function: project
+    box: [40.273098, 40.273098, 40.273098]
 
 convergence:
     # Check if OCB-MOL COM-COM distance exceeds threshold -> dissociated/unbound

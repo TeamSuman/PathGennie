@@ -1,0 +1,17 @@
+name: wepath
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - openmm
+  - mdtraj
+  - mdanalysis
+  - joblib
+  - tqdm
+  - pip
+  - pip:
+      - -e .

@@ -1,0 +1,53 @@
+#!/bin/bash
+# =============================================================================
+# PathGennie HPC test — PBS / Torque / PBSPro, CPU-only queue
+# -----------------------------------------------------------------------------
+# Submit with:  qsub tests/hpc/pbs_cpu.pbs
+# Results land in tests/hpc/results/<jobid>/. See tests/hpc/DEBUGGING.md.
+# =============================================================================
+#PBS -N pg-cpu-test
+#PBS -l select=1:ncpus=16:mem=32gb     # EDIT: cores / memory (PBSPro syntax)
+###PBS -l nodes=1:ppn=16               # EDIT: use this instead on Torque
+#PBS -l walltime=00:30:00              # EDIT: walltime
+#PBS -j oe
+###PBS -q cpu                          # EDIT: uncomment + set your CPU queue
+###PBS -A YOUR_ACCOUNT                 # EDIT: uncomment + set your allocation
+
+set -euo pipefail
+
+# --- EDIT: environment setup -------------------------------------------------
+# module load gromacs/2024            # or amber/24
+# source ~/miniconda3/etc/profile.d/conda.sh && conda activate pathgennie
+# -----------------------------------------------------------------------------
+
+# --- EDIT: what to run -------------------------------------------------------
+PG_REPO="${PBS_O_WORKDIR:-$PWD}"
+PG_BACKEND="${PG_BACKEND:-gromacs}"          # gromacs | amber | openmm
+PG_EXAMPLE="${PG_EXAMPLE:-examples/alanine_dipeptide/gromacs}"
+PG_EXE="${PG_EXE:-$(command -v gmx || true)}"
+NCPUS="${NCPUS:-16}"                          # PBS sets NCPUS on PBSPro
+WORKERS="${WORKERS:-4}"
+THREADS_PER_WORKER="${THREADS_PER_WORKER:-$(( NCPUS / WORKERS ))}"
+# -----------------------------------------------------------------------------
+
+cd "$PG_REPO"
+JOBID="${PBS_JOBID:-local}"
+RESULTS="tests/hpc/results/${JOBID%%.*}"
+mkdir -p "$RESULTS"
+
+echo "### PathGennie PBS CPU test — job $JOBID on $(hostname)"
+echo "### backend=$PG_BACKEND exe=$PG_EXE workers=$WORKERS threads/worker=$THREADS_PER_WORKER"
+export OMP_NUM_THREADS="$THREADS_PER_WORKER"
+
+python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json"
+
+if [ -n "$PG_EXE" ]; then
+  python tests/hpc/run_example.py \
+    --backend "$PG_BACKEND" --example "$PG_EXAMPLE" --executable "$PG_EXE" \
+    --workers-per-device "$WORKERS" --cpu-threads-per-worker "$THREADS_PER_WORKER" \
+    --max-cycle 5 --out "$RESULTS/smoke_cpu.json" || echo "smoke run FAILED (see $RESULTS/smoke_cpu.json)"
+else
+  echo "PG_EXE not set / MD binary not found — skipping MD smoke." | tee "$RESULTS/smoke_cpu.skipped"
+fi
+
+echo "### Done. Results in $RESULTS/"
