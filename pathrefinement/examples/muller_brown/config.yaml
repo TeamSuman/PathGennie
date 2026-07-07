@@ -1,0 +1,39 @@
+# Muller-Brown Path Refinement Configuration
+
+refinement:
+  n_iterations: 50
+  n_trajectories: 10
+  n_workers: 10
+  worker_device: 0
+  seed: 42
+  n_path_images: 100
+  tol_target: 0.05
+  lambda_scale: 1.0 # Scale factor for PathCV lambda (e.g. 0.5 to broaden CV tube)
+
+pathgennie:
+  tau1: 5
+  tau2: 15
+  max_trial: 5
+  max_cycle: 5000
+  save_freq: 10
+  temperature: 300.0
+  sigma: 0.05
+
+refiner:
+  epochs: 500
+  hidden_dim: 124
+  device: cpu
+  lr: 0.005
+  patience: 200
+  batch_size: 2048
+
+principal_curve:
+  n_images: 100
+  lam: 0.1
+  n_iter: 50
+  tol: 0.00001
+  verbose: false
+
+paths:
+  initial_path_npy: "results/initial_path/initial_path.npy"
+  output_dir: "results/refinement"

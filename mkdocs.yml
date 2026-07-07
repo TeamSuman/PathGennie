@@ -1,0 +1,19 @@
+site_name: PathGennie
+site_url: https://yourusername.github.io/PathGennie/
+repo_url: https://github.com/yourusername/PathGennie
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md

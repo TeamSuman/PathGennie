@@ -1,0 +1,40 @@
+# Alanine Dipeptide Path Refinement Configuration (2D space)
+
+refinement:
+  n_iterations: 5
+  n_trajectories: 8
+  n_workers: 8
+  worker_device: 0
+  seed: 42
+  n_path_images: 100
+  tol_target: 10.0 # Target tolerance in degrees
+  lambda_scale: 1.0
+
+pathgennie:
+  tau1: 2
+  tau2: 4
+  max_trial: 10
+  max_cycle: 1000
+  save_freq: 5
+  temperature: 300.0
+  sigma: 0.1
+
+refiner:
+  epochs: 5000
+  hidden_dim: 256
+  device: cuda
+  lr: 0.005
+  patience: 50
+  batch_size: 2048
+
+principal_curve:
+  n_images: 100
+  lam: 0.1
+  n_iter: 100
+  tol: 0.0001
+  verbose: false
+
+paths:
+  initial_path_dcd: "results/initial_path/initial_path.dcd"
+  initial_path_npy: "results/initial_path/initial_path.npy"
+  output_dir: "results/refinement"
