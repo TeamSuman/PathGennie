@@ -6,8 +6,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Hardening pass that unifies the feature branches onto one line and makes the
-HPC paths correct and runnable. See `docs/HPC_REVIEW.md` for the full review.
+Nothing yet.
+
+## [1.3.0] — 2026-07-07
+
+Hardening + consolidation release. Unifies the feature branches (`devel`,
+`pathcv`, the GPU-optimization branch, and `v2`) onto one line, makes the
+HPC paths correct and runnable, and documents every major capability
+(including **Path CVs** and **Path Refinement**). See `docs/HPC_REVIEW.md`
+for the full code review, WESTPA comparison, and roadmap.
 
 ### Fixed
 - **Config validation (release-blocking).** `pathgennie/utils/config.py` declared
@@ -49,6 +56,18 @@ HPC paths correct and runnable. See `docs/HPC_REVIEW.md` for the full review.
 - **Docs**: `docs/hpc.md` (Slurm/PBS scaling guide) and `docs/HPC_REVIEW.md`
   (review, WESTPA comparison, SOTA positioning, roadmap); full mkdocs nav.
 
+### Documentation
+- **Path CVs and Path Refinement are now fully documented**: `docs/path-cv.md`
+  (Branduardi `s`/`z` path collective variables), `docs/path-refinement.md`
+  (the ensemble principal-curve refiner and its numbered example pipeline), and
+  `docs/pca-cv.md` (the `pcagen` artificial PCA distance-CV space). Added a
+  `docs/tutorials/10-path-refinement.md` walkthrough and a README "Path CVs &
+  Path Refinement" section. These merged-in features previously had code but no
+  site documentation.
+
+### Notes
+- `devel` and `main` are reconciled to the same commit as of this release.
+
 ## [1.2.0] — 2026-06-29
 
 This release consolidates the high-performance computing (HPC) parallel scaling features, asynchronous streaming checkpointing, and robust input validation with the newly merged **PathCV** (Path Collective Variables), **Path Refinement**, and standalone **Weighted Ensemble** (WE) frameworks.
@@ -60,8 +79,18 @@ This release consolidates the high-performance computing (HPC) parallel scaling 
 - **Asynchronous trajectory streaming (`pathgennie/core/storage.py`):** Added `HDF5Storage` class utilizing a background thread to stream frames/metrics to HDF5 without keeping them in memory. See [docs/tutorial.md](docs/tutorial.md#2-asynchronous-hdf5-trajectory-streaming).
 - **Robust input validation (`pathgennie/utils/config.py`):** Replaced manual parsing with a comprehensive Pydantic schema validation model (`PathGennieConfig` / `AppConfig`). See [docs/tutorial.md](docs/tutorial.md#3-robust-input-validation).
 
-**Path Refinement & Standalone Weighted Ensemble**
-- **Path Refinement library (`pathrefinement/`):** Added an ensemble-based principal curve pathway refiner (`pathrefinement/refiner.py`), mathematical verification on the Müller-Brown potential, and tutorials. See [pathrefinement/README.md](pathrefinement/README.md).
+**Path Collective Variables & Path Refinement**
+- **Path Collective Variables (`pathrefinement/pathcv.py`):** Added a
+  dimension-agnostic implementation of Branduardi *s*/*z* path CVs
+  (Branduardi et al., *JCP* 126, 054103 (2007)) with log-sum-exp stabilisation,
+  automatic λ selection, optional mass weighting, and an equidistance check —
+  usable both as a progress CV and inside path refinement. See
+  [docs/path-cv.md](docs/path-cv.md).
+- **Path Refinement library (`pathrefinement/`):** Added an ensemble-based principal curve pathway refiner (`pathrefinement/refiner.py`), mathematical verification on the Müller-Brown potential, and tutorials. See [pathrefinement/README.md](pathrefinement/README.md) and [docs/path-refinement.md](docs/path-refinement.md).
+- **Artificial PCA distance-CV space (`pathgennie/utils/ligcvgen.py`, `pcagen` CLI):**
+  Added `LigPCGen` (with `ligconfgen.py`) to generate protein–ligand
+  conformations, build a robust PCA distance-CV space, and pick the dimension of
+  maximum separation — exposed as `pathgennie pcagen`. See [docs/pca-cv.md](docs/pca-cv.md).
 - **Standalone Weighted Ensemble framework (`we/`):** Added the standalone Huber-Kim Weighted Ensemble resampler (`we/src/wepath/`) with examples for toy systems and the 1OPJ GPCR system. See [we/README.md](we/README.md).
 - **Unified Command-line Interface (`pathgennie/cli/main.py`):** Exposed a unified command-line entrypoint `pathgennie` to drive runs and setup setups. See [docs/index.md](docs/index.md).
 - **Conformation utilities (`pathgennie/utils/`):** Added `ligconfgen.py` and `ligcvgen.py` for ligand conformation generation and collective variable analysis.
@@ -214,6 +243,7 @@ Weighted Ensemble stage. Existing `input.yaml` cases continue to run unchanged.
 - Initial PathGennie release: direction-guided adaptive sampling with separate
   OpenMM, AMBER, and GROMACS runners driven by per-case `input.yaml` files.
 
+[1.3.0]: https://github.com/TeamSuman/PathGennie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/TeamSuman/PathGennie/compare/v0.2.0...v1.2.0
 [0.2.0]: https://github.com/TeamSuman/PathGennie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/TeamSuman/PathGennie/releases/tag/v0.1.0

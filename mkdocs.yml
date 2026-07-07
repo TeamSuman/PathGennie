@@ -26,6 +26,9 @@ nav:
       - HPC Review & Roadmap: HPC_REVIEW.md
   - Capabilities:
       - Data-Driven CVs (SPIB): data-driven-cv.md
+      - Path CVs (s, z): path-cv.md
+      - Path Refinement: path-refinement.md
+      - PCA Distance-CV Space: pca-cv.md
       - Strategy Profiles: strategy-profiles.md
       - Weighted Ensemble: weighted-ensemble.md
       - OPES: opes.md
@@ -43,4 +46,5 @@ nav:
       - Roadmap Agent: tutorials/07-roadmap-agent.md
       - OPES: tutorials/08-opes.md
       - Path Sampling: tutorials/09-path-sampling.md
+      - Path Refinement: tutorials/10-path-refinement.md
   - Project Roadmap: roadmap.md
