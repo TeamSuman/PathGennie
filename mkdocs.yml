@@ -16,4 +16,31 @@ plugins:
 
 nav:
   - Home: index.md
-  - Tutorial: tutorial.md
+  - Getting Started:
+      - Tutorial: tutorial.md
+      - Configuration: configuration.md
+      - Architecture: architecture.md
+  - HPC & Scaling:
+      - HPC Guide: hpc.md
+      - Multi-GPU: multi-gpu.md
+      - HPC Review & Roadmap: HPC_REVIEW.md
+  - Capabilities:
+      - Data-Driven CVs (SPIB): data-driven-cv.md
+      - Strategy Profiles: strategy-profiles.md
+      - Weighted Ensemble: weighted-ensemble.md
+      - OPES: opes.md
+      - Path Sampling (TPS/TIS): path-sampling.md
+      - Non-Linear Search (RRT): non-linear-search.md
+      - Roadmap Graph: roadmap-graph.md
+      - Agent Controller: agent.md
+  - Tutorials:
+      - Quickstart (toy): tutorials/01-quickstart-toy.md
+      - Multi-GPU: tutorials/02-multi-gpu.md
+      - SPIB CV: tutorials/03-spib-cv.md
+      - Weighted Ensemble: tutorials/04-weighted-ensemble.md
+      - Strategy Profiles: tutorials/05-strategy-profiles.md
+      - RRT Search: tutorials/06-rrt-search.md
+      - Roadmap Agent: tutorials/07-roadmap-agent.md
+      - OPES: tutorials/08-opes.md
+      - Path Sampling: tutorials/09-path-sampling.md
+  - Project Roadmap: roadmap.md

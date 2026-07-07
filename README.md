@@ -19,7 +19,7 @@ folding/unfolding, host-guest unbinding, and QM/MM steering.
 | ------------------------------------ | ---------------------- | -------------------------------------------------------------- |
 | `examples/alanine_dipeptide`         | AMBER, GROMACS, OpenMM | Targeted phi/psi transition between Ramachandran basins        |
 | `examples/CLN025`                    | AMBER, GROMACS         | Chignolin path generation with end-to-end distance projections |
-| `examples/OAMe-G2`                   | AMBER, GROMACS         | Host-guest unbinding with COM-COM distance projections         |
+| `examples/OAMe-G2`                   | GROMACS, OpenMM        | Host-guest unbinding with COM-COM distance projections         |
 | `examples/qmmm_alanine_conformation` | AMBER                  | QM/MM alanine-dipeptide conformational steering                |
 
 ### Movie Examples
@@ -158,7 +158,6 @@ Outputs are written to `pathgennie_openmm_run/output/` by default:
 
 ```bash
 cd examples/qmmm_alanine_conformation/amber
-python run_pg_amber.py --config input_c7eq.yaml
 python run_pg_amber.py --config input_c7ax.yaml
 ```
 
@@ -170,7 +169,8 @@ for the QM/MM region, targets, and regeneration notes.
 
 Each case is driven by a case-local YAML configuration file (typically `input.yaml`) containing configuration options for the simulation backend, PathGennie adaptive sampling parameters, MD engine controls, and the projection/convergence functions.
 
-<<<<<<< HEAD
+The file has four main parts:
+
 - Backend block: `amber`, `gromacs`, or `openmm` input files and executable
   settings.
 - `pathgennie`: adaptive sampling settings such as `mode`, `tau1_steps`,
@@ -187,9 +187,8 @@ Each case is driven by a case-local YAML configuration file (typically `input.ya
   collective-variable vector.
 - `convergence`: Python module and function that decide when the generated path
   has reached the desired state.
-=======
+
 ### Configuration Reference
->>>>>>> origin/pathcv
 
 #### 1. Root Level
 * `workdir` (str): Output and scratch directory path. Defaults to `pathgennie_run` (AMBER), `pathgennie_gmx_run` (GROMACS), or `pathgennie_openmm_run` (OpenMM).
@@ -234,7 +233,40 @@ Each case is driven by a case-local YAML configuration file (typically `input.ya
 * `sigma` (float): Boltzmann weighting parameter controlling selection bias (lower = higher bias).
 * `temperature` (float): Simulation temperature in Kelvin (default: 300.0).
 * `verbosity` (int): Logging detail level: `0` (silent), `1` (minimal), `2` (verbose).
-* `target_projection` (list of float, Target Mode only): Coordinate target coordinates.
+* `target_projection` (list of float, Target Mode only): Target CV coordinates.
+* `escape_metric` (str, Escape Mode only): `"cv0"` (maximise the first CV
+  component; default for AMBER/GROMACS) or `"distance_from_start"` (maximise
+  Euclidean distance from the start CV).
+* `seed` (int, optional): Master RNG seed for the selection draw and per-segment
+  velocity randomisation. Set it for reproducible runs — the seed → trial
+  mapping is deterministic even across the multi-GPU thread pool.
+
+**Parallel / device placement (AMBER & GROMACS):**
+* `devices` (list of int, optional): Logical GPU indices to spread the swarm
+  across. Interpreted **relative to the scheduler's `CUDA_VISIBLE_DEVICES`
+  allocation** — with `--gres=gpu:2` (Slurm) or `ngpus=2` (PBS), `devices: [0, 1]`
+  targets the two GPUs you were granted, never GPUs owned by another job.
+* `workers_per_device` (int, optional): Concurrent MD segments per device
+  (replaces the legacy `tau1_workers`). Use `1` for large systems that already
+  fill a GPU; `>1` only for small systems.
+* `cpu_threads_per_worker` (int, optional): Pin per-worker OpenMP/MKL threads
+  (and inject GROMACS `-ntomp`) so concurrent CPU segments do not each grab every
+  core. Set roughly `cores / (devices × workers_per_device)`.
+
+**Streaming, rejection & downstream:**
+* `checkpoint_path` (str, optional): Stream frames/metrics to this HDF5 file as
+  the run proceeds (bounded memory for long runs).
+* `reject_worse_tau2` / `reject_worse_anchor` (bool, optional): Reject a tau2
+  runner worse than its sampler / a candidate worse than the current anchor.
+* `profile` (str, optional): `discovery` (fast candidate paths — the original
+  ultrashort/greedy/geometric-CV regime) or `sampling` (longer segments, learned
+  CV, downstream stage). Supplies defaults; explicit keys always win.
+* `downstream` (str, optional): Name of a downstream enhanced-sampling stage
+  (e.g. `weighted_ensemble`); its settings go in a top-level block of that name.
+
+> **HPC note.** For scaling on Slurm/PBS clusters — device placement, CPU thread
+> pinning, node-local scratch, and known limitations — see the dedicated guide
+> in [`docs/hpc.md`](docs/hpc.md) and the review in [`docs/HPC_REVIEW.md`](docs/HPC_REVIEW.md).
 
 #### 4. MD Parameters (`md`)
 * `controls` (dict, AMBER/GROMACS): Key-value dictionary of `.mdin` or `.mdp` config parameters to override.
@@ -312,7 +344,6 @@ convergence:
     group_b_resname: MOL
     threshold: 10.0
 ```
-## TODO: Overwrite issue
 
 ## Data-Driven CVs (SPIB)
 

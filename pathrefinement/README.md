@@ -17,22 +17,28 @@ This implementation aligns with the methodology described in:
 - `pathcv.py`: Path Collective Variable implementation.
 - `ensemblerefiner.py`: PyTorch-based neural network model that learns the continuous map $t \to \mathbf{x}$.
 - `principal_curve.py`: Expectation-maximization based curve smoothing.
-- `examples/`: Runnable scripts for toy potentials (`refine_muller_brown.py`, `refine_three_hole.py`) and explicit molecular systems (`CLN025/run_chignolin.py`).
+- `examples/`: Runnable, numbered scripts for the Müller-Brown toy potential
+  (`muller_brown/`) and molecular systems (`AlaD/`, `CLN025/`). Each case runs as
+  a short pipeline: `1_generate_initial_path.py` → `3_run_refinement.py` →
+  `4_analyze_refinement.py`.
 
 ## Getting Started
 
-You can run the provided toy potential examples to see how path refinement improves an initially poor path estimate:
+Run the Müller-Brown toy example to see how refinement improves an initially poor
+path estimate (this stage requires only NumPy):
 
 ```bash
 conda activate pathgennie
 
-# Run the Muller-Brown example
-python pathrefinement/examples/refine_muller_brown.py
-
-# Run the Three-Hole potential example
-python pathrefinement/examples/refine_three_hole.py
+cd pathrefinement/examples/muller_brown
+python 1_generate_initial_path.py   # build a deliberately bad initial path
+python 3_run_refinement.py          # ensemble principal-curve refinement
+python 4_analyze_refinement.py      # convergence + FES plots
 ```
-Output plots will be saved in `pathrefinement/examples/results/`.
+Outputs are written under `pathrefinement/examples/muller_brown/results/`. The
+`AlaD/` and `CLN025/` cases follow the same numbered sequence but require OpenMM
+(and, for the refiner, PyTorch — `pip install 'pathgennie[ml]'`); edit the paths
+in each case's `common.py` for your environment before running.
 
 ### Using the Refiner
 
