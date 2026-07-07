@@ -166,8 +166,7 @@ class PathGennieIterativeLearner:
                 n_traj=n_traj,
             )
 
-            # Assuming 'pc' is a globally available or previously initialized object
-            smooth_paths = self._smooth_trajectories(traj_list, pc)
+            smooth_paths = self._smooth_trajectories(traj_list, self.pc)
             refined_path = self._refine_ensemble(smooth_paths)
 
             learned_paths.append(refined_path)

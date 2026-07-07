@@ -254,9 +254,15 @@ class SPIBProgress(ProgressVariable):
             self._z_target = self._encode(self.target_coords)
 
     # -- ProgressVariable ----------------------------------------------------
-    def project(self, coords: np.ndarray) -> np.ndarray:
+    def project(self, coords: np.ndarray, cycle: Optional[int] = None) -> np.ndarray:
+        # ``cycle`` is part of the ProgressVariable protocol -- the driver always
+        # calls ``project(coords, cycle=cycle)``. Accept it so on-the-fly SPIB
+        # does not raise ``TypeError: project() got an unexpected keyword
+        # argument 'cycle'`` on the very first evaluation. The learned encoder is
+        # stationary within a cycle, so the value is only forwarded to the
+        # bootstrap CV (which may be cycle-dependent).
         if self.result is None:
-            return np.asarray(self.bootstrap.project(coords), dtype=float)
+            return np.asarray(self.bootstrap.project(coords, cycle=cycle), dtype=float)
         return self._encode(coords)
 
     def metric(self, cv: np.ndarray) -> float:
