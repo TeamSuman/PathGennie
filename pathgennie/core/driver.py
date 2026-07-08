@@ -44,6 +44,7 @@ class TrialResult:
     cv: np.ndarray
     metric: float
     coords: np.ndarray
+    device: Optional[int] = None
 
 
 class PathGennieDriver:
@@ -140,7 +141,7 @@ class PathGennieDriver:
             # for OpenMM) leaks per trial per cycle and fills scratch on long runs.
             if seg != handle:
                 self.engine.release(handle)
-            return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords)
+            return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords, device=device)
 
         converged_at: Optional[int] = None
         for cycle in range(max_cycle):
@@ -157,9 +158,12 @@ class PathGennieDriver:
             chosen = trials[chosen_idx]
 
             # ---- runner (tau2) from the chosen sampler ----
+            tau2_device = getattr(chosen, "device", None)
+            if tau2_device is None:
+                tau2_device = self.executor.devices[0]
             tau2_handle = self.engine.run_segment(
                 chosen.handle, tau2, randomize_velocities=False,
-                seed=self._seed(), device=self.executor.devices[0],
+                seed=self._seed(), device=tau2_device,
             )
             tau2_coords = self.engine.get_coords(tau2_handle)
             tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
