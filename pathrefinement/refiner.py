@@ -24,6 +24,7 @@ class PathRefinementConfig:
     pathgennie_max_cycle: int = 500
     pathgennie_tol_target: float = 0.05
     keep_endpoints: bool = True
+    project_to_real: bool = False  # Snap refined path nodes to nearest physical trajectory frames
     seed: int = 42
     nn_epochs: int = 2000
     nn_hidden_dim: int = 128
@@ -223,6 +224,7 @@ class PathRefiner:
 
         per_iter_times: Dict[str, float] = {}
         n_workers_actual = min(self.config.n_workers, self.config.n_trajectories)
+        converged = False
 
         for it in range(self.config.n_iterations):
             if self.config.verbosity > 0:
@@ -278,7 +280,10 @@ class PathRefiner:
             )
             t_nn = time.perf_counter() - t1
 
-            refined_path_3d = refiner.transform(n_points=len(initial_path))
+            refined_path_3d = refiner.transform(
+                n_points=len(initial_path),
+                project_to_real=self.config.project_to_real
+            )
             current_path = refined_path_3d[:, 0, :]
 
             if self.config.keep_endpoints:
@@ -297,13 +302,14 @@ class PathRefiner:
 
             if diff < 1e-3:  # hardcoded simple tolerance
                 print("Converged.")
+                converged = True
                 break
 
         return RefinementResult(
             initial_path=initial_path,
             refined_path=current_path,
             path_history=path_history,
-            converged=(it < self.config.n_iterations - 1),
+            converged=converged,
             n_iterations_run=it + 1,
             metadata=asdict(self.config),
             timing=per_iter_times,

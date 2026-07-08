@@ -111,7 +111,7 @@ def main():
             smooth_paths.append(smooth_path)
             
         print("Learning consensus path with EnsembleRefiner...")
-        refiner = EnsemblePathRefinerFast(hidden_dim=256, device="cuda")
+        refiner = EnsemblePathRefinerFast(hidden_dim=256)
         smooth_paths_3d = [p[:, np.newaxis, :] for p in smooth_paths]
         
         refiner.fit(

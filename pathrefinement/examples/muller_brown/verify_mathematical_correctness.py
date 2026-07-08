@@ -31,6 +31,25 @@ from pathrefinement.potentials import MullerBrownPotential
 from pathrefinement.examples.muller_brown.common import MINIMA, muller_brown_energy
 
 
+def discrete_frechet(P, Q):
+    """Computes the discrete Frechet distance between two paths P and Q."""
+    n = len(P)
+    m = len(Q)
+    dt = np.full((n, m), -1.0)
+    dt[0, 0] = np.linalg.norm(P[0] - Q[0])
+    for i in range(1, n):
+        dt[i, 0] = max(dt[i-1, 0], np.linalg.norm(P[i] - Q[0]))
+    for j in range(1, m):
+        dt[0, j] = max(dt[0, j-1], np.linalg.norm(P[0] - Q[j]))
+    for i in range(1, n):
+        for j in range(1, m):
+            dt[i, j] = max(
+                min(dt[i-1, j], dt[i, j-1], dt[i-1, j-1]),
+                np.linalg.norm(P[i] - Q[j])
+            )
+    return dt[n-1, m-1]
+
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(__file__)
 REFINE_DIR = os.path.join(BASE_DIR, "results", "refinement")
@@ -56,7 +75,7 @@ def load_path_history():
     return keys, paths
 
 
-def test_eq1_s_formula():
+def check_eq1_s_formula():
     """Verify Eq 1: s = sum(i * exp(-λ·D_i)) / sum(exp(-λ·D_i))"""
     print("\n--- Eq 1: PathCV s (progress coordinate) ---")
 
@@ -80,7 +99,7 @@ def test_eq1_s_formula():
     return True
 
 
-def test_eq2_z_formula():
+def check_eq2_z_formula():
     """Verify Eq 2: z = -(1/λ)·ln(Σ exp(-λ·D_i))"""
     print("\n--- Eq 2: PathCV z (orthogonal distance) ---")
 
@@ -103,7 +122,7 @@ def test_eq2_z_formula():
     return True
 
 
-def test_eq3_lambda_formula():
+def check_eq3_lambda_formula():
     """
     Verify Eq 3 (paper's eq 4):
     λ = 2.3·(N-1) / Σ|X_i - X_{i+1}|
@@ -195,7 +214,7 @@ def test_eq3_lambda_formula():
     return True
 
 
-def test_paper_figure2_convergence():
+def check_paper_figure2_convergence():
     """
     Verify the refinement convergence shown in Figure 2(a,b) of the paper.
     The Frechet distance between consecutive paths should decrease.
@@ -209,8 +228,7 @@ def test_paper_figure2_convergence():
     frechets = []
     msds = []
     for i in range(1, len(paths)):
-        d = np.linalg.norm(paths[i][:, None, :] - paths[i-1][None, :, :], axis=2)
-        f = max(np.max(np.min(d, axis=0)), np.max(np.min(d, axis=1)))
+        f = discrete_frechet(paths[i], paths[i-1])
         frechets.append(f)
         msds.append(np.mean((paths[i] - paths[i-1])**2))
 
@@ -234,7 +252,7 @@ def test_paper_figure2_convergence():
     return True
 
 
-def test_neural_network_refinement():
+def check_neural_network_refinement():
     """
     Verify the NN-based path refinement (Section 3.3).
     The neural network should:
@@ -288,7 +306,7 @@ def test_neural_network_refinement():
     return True
 
 
-def test_principal_curve_algorithm():
+def check_principal_curve_algorithm():
     """
     Verify the PrincipalCurve algorithm (Section 3.3).
     """
@@ -336,7 +354,7 @@ def test_principal_curve_algorithm():
     return True
 
 
-def test_potential_energy_landscape():
+def check_potential_energy_landscape():
     """
     Verify the Muller-Brown potential implementation.
     """
@@ -365,7 +383,7 @@ def test_potential_energy_landscape():
     return True
 
 
-def test_path_iteration_self_consistency():
+def check_path_iteration_self_consistency():
     """
     Verify that the refined paths are self-consistent:
     1. All paths have same number of nodes
@@ -406,14 +424,14 @@ def main():
     print(f"Example: pathrefinement/examples/muller_brown/")
 
     checks = [
-        ("Eq 1: s (progress coordinate)", test_eq1_s_formula),
-        ("Eq 2: z (orthogonal distance)", test_eq2_z_formula),
-        ("Eq 3: λ (lambda computation)", test_eq3_lambda_formula),
-        ("Fig 2: Iterative refinement convergence", test_paper_figure2_convergence),
-        ("§3.3: Neural network architecture", test_neural_network_refinement),
-        ("§3.3: PrincipalCurve algorithm", test_principal_curve_algorithm),
-        ("§3.2: Muller-Brown potential", test_potential_energy_landscape),
-        ("Self-consistency of iterations", test_path_iteration_self_consistency),
+        ("Eq 1: s (progress coordinate)", check_eq1_s_formula),
+        ("Eq 2: z (orthogonal distance)", check_eq2_z_formula),
+        ("Eq 3: λ (lambda computation)", check_eq3_lambda_formula),
+        ("Fig 2: Iterative refinement convergence", check_paper_figure2_convergence),
+        ("§3.3: Neural network architecture", check_neural_network_refinement),
+        ("§3.3: PrincipalCurve algorithm", check_principal_curve_algorithm),
+        ("§3.2: Muller-Brown potential", check_potential_energy_landscape),
+        ("Self-consistency of iterations", check_path_iteration_self_consistency),
     ]
 
     for name, fn in checks:

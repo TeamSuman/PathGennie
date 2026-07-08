@@ -1,8 +1,8 @@
 """
-3_run_refinement.py
+2_run_refinement.py
 ───────────────────
 Iterative path refinement on the Muller-Brown potential using PathGennieMD
-with parallel walkers.  Mirrors the structure of CLN025/3_run_refinement.py.
+with parallel walkers.  Mirrors the structure of CLN025/2_run_refinement.py.
 
 Prerequisites
 ─────────────

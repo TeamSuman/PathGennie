@@ -19,12 +19,12 @@ The example is a short numbered pipeline:
 ```bash
 cd pathrefinement/examples/muller_brown
 python 1_generate_initial_path.py    # sample a rough path -> results/initial_path/
-python 3_run_refinement.py           # explore -> smooth -> refine loop
-python 4_analyze_refinement.py       # convergence + s/z + FES plots
+python 2_run_refinement.py           # explore -> smooth -> refine loop
+python 3_analyze_refinement.py       # convergence + s/z + FES plots
 ```
 
 Outputs land in `pathrefinement/examples/muller_brown/results/` (not tracked in
-git). `4_analyze_refinement.py` produces the convergence curve (max-norm path
+git). `3_analyze_refinement.py` produces the convergence curve (max-norm path
 change per iteration) and the `(s, z)` projection of the refined path.
 
 ## What is happening

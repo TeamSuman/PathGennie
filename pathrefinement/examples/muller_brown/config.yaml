@@ -1,7 +1,7 @@
 # Muller-Brown Path Refinement Configuration
 
 refinement:
-  n_iterations: 50
+  n_iterations: 5
   n_trajectories: 10
   n_workers: 10
   worker_device: 0
