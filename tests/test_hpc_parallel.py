@@ -97,3 +97,25 @@ def test_cloned_anchor_handles_do_not_leak():
     # Without the release fix this would be on the order of max_cycle*max_trial
     # (~160) live entries. It should stay tiny (anchor + a few bookkeeping states).
     assert len(engine._cache) < max_trial + 5
+
+
+def test_tau2_runs_on_chosen_device():
+    """Verify that commit trajectories (tau2) run on the device of the winning candidate."""
+    engine = ToyLangevinEngine(dt=0.002, kT=1.0)
+    record = []
+    orig_run_segment = engine.run_segment
+    def tracking_run_segment(handle, steps, randomize_velocities=True, seed=None, device=None):
+        record.append((steps, randomize_velocities, device))
+        return orig_run_segment(handle, steps, randomize_velocities=randomize_velocities, seed=seed, device=device)
+    engine.run_segment = tracking_run_segment
+
+    progress = EscapeMetric(lambda c: np.array([c[0, 0]]), start_cv=np.array([0.0]), escape_metric="cv0")
+    executor = ThreadDevicePool(devices=[0, 1, 2, 3], workers_per_device=1)
+    driver = PathGennieDriver(engine, progress, convergence_fn=lambda c: False, executor=executor, sigma=0.2, seed=42, verbosity=0)
+    init = engine.create_state([-1.0, -1.0, 0.0])
+    driver.run(init, tau1=2, tau2=5, max_trial=4, max_cycle=2, save_freq=1)
+
+    tau2_calls = [r for r in record if not r[1]]
+    assert len(tau2_calls) == 2
+    for _, _, dev in tau2_calls:
+        assert dev in [0, 1, 2, 3]

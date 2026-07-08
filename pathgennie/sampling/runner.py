@@ -67,15 +67,21 @@ def run_downstream(
     scalar_cv_fn: Callable[[np.ndarray], float],
     output_dir: Path,
     state_labels: Optional[np.ndarray] = None,
+    executor=None,
 ) -> SamplingResult:
-    """Build a PathEnsemble, run the named stage, and persist its result."""
+    """Build a PathEnsemble, run the named stage, and persist its result.
+
+    ``executor`` is the backend's device pool. Forwarding it lets a downstream
+    Weighted Ensemble spread its walker propagation across the same GPUs/cores the
+    discovery swarm used, instead of running serially.
+    """
     from pathgennie.sampling import make_stage  # late import avoids any import cycle
 
     ensemble = build_path_ensemble(
         traj, metrics, handles=list(seed_handles) if seed_handles else None,
         cv_fn=scalar_cv_fn, state_labels=state_labels,
     )
-    stage = make_stage(downstream, cv_fn=scalar_cv_fn, **dict(stage_cfg))
+    stage = make_stage(downstream, cv_fn=scalar_cv_fn, executor=executor, **dict(stage_cfg))
     result = stage.run(ensemble, engine)
     write_result(result, output_dir)
     return result

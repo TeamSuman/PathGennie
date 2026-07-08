@@ -1,31 +1,43 @@
 # Running PathGennie on HPC Clusters
 
-This tutorial demonstrates how to use the newly implemented high-performance computing (HPC) features in PathGennie: **MPI Parallelism**, **HDF5 Checkpointing**, and **Pydantic Validation**.
+This tutorial demonstrates how to scale PathGennie on high-performance computing (HPC) clusters: **single-GPU saturation**, **multi-GPU Weighted Ensemble**, **HDF5 checkpointing**, and **Pydantic validation**.
 
-## 1. Multi-Node Parallelism with MPI and Dask
+## 1. Scaling PathGennie on HPC
 
-When exploring complex free-energy landscapes, simulating multiple trial trajectories concurrently is essential. PathGennie now includes an `MPIExecutor` and a `DaskExecutor` to distribute swarm evaluations across multiple cluster nodes.
+PathGennie is designed to run **within a single node**. Path generation itself is
+lightweight — short segments on small-to-medium systems — and targets **one GPU**,
+which it saturates by running many swarm walkers concurrently. The heavier,
+embarrassingly parallel workload is the downstream pre-seeded Weighted Ensemble,
+and *that* is what spreads across multiple GPUs or CPU cores.
 
-**Prerequisites:**
-You need `mpi4py` or `dask[distributed]` installed. You can install them using the optional HPC flag:
-```bash
-pip install pathgennie[hpc]
+**Saturate a single GPU (path generation).** Set `workers_per_device` to run
+several trial segments concurrently on the same card (the AMBER/GROMACS backends
+launch concurrent MD processes; the OpenMM backend runs concurrent Contexts).
+Size it to fit the GPU's memory and the node's cores:
+
+```yaml
+pathgennie:
+  devices: [0]            # a single GPU
+  workers_per_device: 8   # or "auto" (OpenMM) to size from free GPU memory + cores
 ```
 
-**Running with MPI:**
-By invoking PathGennie with `mpiexec` or `srun` (on Slurm), PathGennie automatically identifies the MPI pool.
+**Spread the Weighted Ensemble across GPUs/cores (downstream).** When a
+`downstream: weighted_ensemble` stage is configured, the WE walker propagation
+reuses the same device pool, so listing several devices distributes WE walkers
+across them with no algorithm change:
 
-```bash
-# Example: Run on 4 nodes with 4 tasks per node
-srun -N 4 --ntasks-per-node=4 pathgennie-openmm --case ./my_system
+```yaml
+pathgennie:
+  devices: [0, 1, 2, 3]   # WE walkers spread across 4 GPUs
+  workers_per_device: 2
+  downstream: weighted_ensemble
 ```
 
-**Running with Dask:**
-When you provide a Dask scheduler address via `DaskExecutor`, PathGennie connects to the cluster and distributes the workload using the Dask task graph.
-```python
-from pathgennie.core.parallel import DaskExecutor
-executor = DaskExecutor(address="tcp://scheduler:8786")
-```
+**Multi-node.** Run independent pathways and replicates as **Slurm/PBS array
+jobs** — the same pattern the path-resolved-kinetics workflow uses to compute
+per-channel rates separately. There is no in-process multi-node executor; a
+work-queue model for a single tightly-coupled run is on the roadmap. See
+[the HPC guide](hpc.md).
 
 ## 2. Asynchronous HDF5 Trajectory Streaming
 
@@ -36,8 +48,8 @@ Enable this by specifying a `checkpoint_path` in your `input.yaml`:
 ```yaml
 pathgennie:
   mode: "escape"
-  tau1: 500
-  tau2: 500
+  tau1_steps: 500
+  tau2_steps: 500
   max_cycle: 10000
   save_freq: 10
   # New! Stream frames directly to an HDF5 dataset without keeping them all in RAM

@@ -3,7 +3,7 @@ gromacs:
     initial_structure: ala_dipeptide_equilibrated.gro
     reference_template: ala_dipeptide_equilibrated.gro
     mdp: md.mdp
-    executable: /home/dm/Soft/GMX26/bin/gmx
+    executable: gmx
     maxwarn: 2
     mdrun_args:
         - -ntmpi
@@ -21,7 +21,7 @@ pathgennie:
     tau1_steps: 2
     tau2_steps: 4
     max_trial: 10
-    tau1_workers: 10
+    workers_per_device: 10
     max_cycle: 1000
     save_freq: 10
     sigma: 0.1

@@ -67,8 +67,8 @@ Each case is a short **numbered pipeline** under `pathrefinement/examples/`:
 ```bash
 cd pathrefinement/examples/muller_brown
 python 1_generate_initial_path.py    # sample a rough path (writes results/initial_path/)
-python 3_run_refinement.py           # ensemble principal-curve refinement
-python 4_analyze_refinement.py       # convergence + FES / Ramachandran plots
+python 2_run_refinement.py           # ensemble principal-curve refinement
+python 3_analyze_refinement.py       # convergence + FES / Ramachandran plots
 ```
 
 - `muller_brown/` — the analytic toy; also ships

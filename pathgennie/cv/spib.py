@@ -209,6 +209,7 @@ class SPIBProgress(ProgressVariable):
         refresh_every: int = 50,
         min_frames: int = 40,
         dt: int = 1,
+        max_buffer: Optional[int] = None,
         train_kwargs: Optional[dict] = None,
     ):
         if mode not in ("escape", "target"):
@@ -222,8 +223,16 @@ class SPIBProgress(ProgressVariable):
         self.refresh_every = int(refresh_every)
         self.min_frames = int(min_frames)
         self.dt = int(dt)
+        self.max_buffer = None if max_buffer is None else int(max_buffer)
         self.train_kwargs = dict(train_kwargs or {})
-        self._buffer: List[np.ndarray] = []
+        # Cache *featurized* frames incrementally rather than re-featurizing the
+        # whole raw-coordinate buffer on every refresh (that was O(N^2) over a
+        # long adaptive run and held full coordinate arrays in host memory). The
+        # feature vector is usually far smaller than a solvated configuration, and
+        # ``max_buffer`` optionally bounds memory with a most-recent sliding window.
+        self._features: List[np.ndarray] = []
+        self._feature_start: Optional[np.ndarray] = None
+        self._feature_target: Optional[np.ndarray] = None
         self.result: Optional[SPIBResult] = None
         self._z_start: Optional[np.ndarray] = None
         self._z_target: Optional[np.ndarray] = None
@@ -231,27 +240,39 @@ class SPIBProgress(ProgressVariable):
 
     # -- driver hook ---------------------------------------------------------
     def observe(self, coords: np.ndarray, cycle: int) -> None:
-        self._buffer.append(np.asarray(coords, dtype=float).copy())
+        feat = np.asarray(self.featurizer.raw(coords), dtype=float)
+        if self._feature_start is None:
+            self._feature_start = feat.copy()
+        self._features.append(feat)
+        if self.max_buffer is not None and len(self._features) > self.max_buffer:
+            # Sliding window: retain only the most recent ``max_buffer`` frames.
+            del self._features[: len(self._features) - self.max_buffer]
         due = (cycle - self._last_refresh) >= self.refresh_every or self.result is None
-        if due and len(self._buffer) >= self.min_frames:
+        if due and len(self._features) >= self.min_frames:
             self._refresh()
             self._last_refresh = cycle
 
-    def _encode(self, coords: np.ndarray) -> np.ndarray:
+    def _encode_feature(self, raw_feature: np.ndarray) -> np.ndarray:
         assert self.result is not None
-        x = (self.featurizer.raw(coords) - self.result.feature_mean) / self.result.feature_std
+        x = (np.asarray(raw_feature, dtype=float) - self.result.feature_mean) / self.result.feature_std
         with torch.no_grad():
             mu, _ = self.result.model.encode(torch.tensor(x, dtype=torch.float32).unsqueeze(0))
         return mu.squeeze(0).numpy()
 
+    def _encode(self, coords: np.ndarray) -> np.ndarray:
+        return self._encode_feature(self.featurizer.raw(coords))
+
     def _refresh(self) -> None:
-        features = np.stack([self.featurizer.raw(c) for c in self._buffer])
+        features = np.stack(self._features)
         if features.shape[0] <= self.dt + 1:
             return
         self.result = train_spib(features, dt=self.dt, **self.train_kwargs)
-        self._z_start = self._encode(self._buffer[0])
+        # Encode the *original* start frame, retained even if the window slid past it.
+        self._z_start = self._encode_feature(self._feature_start)
         if self.mode == "target":
-            self._z_target = self._encode(self.target_coords)
+            if self._feature_target is None:
+                self._feature_target = np.asarray(self.featurizer.raw(self.target_coords), dtype=float)
+            self._z_target = self._encode_feature(self._feature_target)
 
     # -- ProgressVariable ----------------------------------------------------
     def project(self, coords: np.ndarray, cycle: Optional[int] = None) -> np.ndarray:

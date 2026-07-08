@@ -1,8 +1,8 @@
 """
-4_analyze_refinement.py
+3_analyze_refinement.py
 ───────────────────────
 Visualize the iterative Muller-Brown path refinement results.
-Mirrors the structure of CLN025/4_analyze_refinement.py.
+Mirrors the structure of CLN025/3_analyze_refinement.py.
 
 Produces two plots:
   1. refinement_iterations.png  — all paths overlaid on the potential surface
@@ -10,7 +10,7 @@ Produces two plots:
 
 Prerequisites
 ─────────────
-Run 1_generate_initial_path.py and 3_run_refinement.py first.
+Run 1_generate_initial_path.py and 2_run_refinement.py first.
 """
 
 import argparse

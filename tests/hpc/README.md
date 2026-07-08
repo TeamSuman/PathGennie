@@ -25,7 +25,7 @@ session) that will interpret the JSON and, if needed, debug the code or scripts.
    ```bash
    git clone <repo> && cd PathGennie
    conda env create -f environment.yml && conda activate pathgennie
-   pip install -e ".[dev]"          # add [ml] for SPIB, [hpc] for MPI/Dask
+   pip install -e ".[dev]"          # add [ml] for SPIB / on-the-fly CV
    ```
 2. **Edit the `# EDIT:` lines** in the job script for your cluster: `module load`
    lines, `conda activate`, the partition/queue/account directives, and the
@@ -53,22 +53,33 @@ python tests/hpc/hpc_selfcheck.py --out tests/hpc/results/login/selfcheck.json
 - **`config_validation`** — the case `input.yaml` survives validation with
   `tau1_steps` and all sections (`md`, `output`, downstream blocks) intact. A
   regression here silently ignores your MD parameters.
+- **`executable_resolution`** — the case's configured MD `executable` resolves the
+  way the backend does (`shutil.which`), so a bare `module load` name (`gmx`,
+  `pmemd.cuda`) works. A missing binary on a login node is reported, not failed.
 - **`threaded_determinism_and_leak`** — a seeded multi-worker run is reproducible
   and does not leak scratch/handles (bounded engine cache).
+- **`concurrent_openmm`** — the OpenMM backend's single-GPU **concurrent-Context
+  pool** builds and runs segments (CPU platform, no GPU needed). This is how
+  OpenMM saturates one card: several walkers run at once instead of serially.
 - **`hdf5_checkpoint`** — streaming checkpoint writes/reads and surfaces writer
   errors instead of silently dropping frames.
 - **`unit_tests`** — the full unit suite passes on the node's Python/toolchain.
 - **`gpu_spread` (GPU jobs, AMBER/GROMACS)** — with ≥2 allocated GPUs, the swarm
   actually distributes MD segments across them (verified via `nvidia-smi`).
-  *OpenMM runs single-GPU by design* — see `DEBUGGING.md`.
+  *OpenMM is single-GPU by design* — it instead **saturates one card** by running
+  `workers_per_device` concurrent walkers (`auto` sizes from cores + free GPU
+  memory). See `DEBUGGING.md`.
 
 ## Notes / current limitations exercised here
 
-- The **multi-node** executors (`MPIExecutor`, `DaskExecutor`) are **not** part of
-  this suite because they cannot yet serialize the driver's per-cycle work
-  (closures capture live engine state). Multi-GPU here means *single node, many
-  GPUs*. Multi-node scale-out is on the roadmap (`ROADMAP.md`); see the review
-  document `docs/HPC_REVIEW.md`.
+- **Scaling model.** Path generation runs on **one GPU**, saturated by concurrent
+  walkers (`workers_per_device`). The downstream **Weighted Ensemble** is what
+  spreads across multiple GPUs/cores — it reuses the same device pool, so listing
+  several `devices` distributes its walkers. For multi-node, run independent
+  pathways/replicates as **Slurm/PBS array jobs**.
+- There is **no in-process multi-node executor** — for multi-node throughput use
+  independent Slurm/PBS array jobs (above). A work-queue manager for a single
+  tightly-coupled multi-node run is on the roadmap (`ROADMAP.md`).
 - Scratch defaults to the case's `workdir`. On production runs point it (and
   `$TMPDIR`) at **node-local SSD**, not shared Lustre/NFS — thousands of
   ultrashort segments hammer a shared metadata server. See `DEBUGGING.md`.

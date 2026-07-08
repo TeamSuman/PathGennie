@@ -6,7 +6,24 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Single-GPU saturation (OpenMM).** `OpenMMEngine` backs a pool of concurrent
+  Contexts on one card; `workers_per_device` (an int, or `auto` sized from cores
+  and free GPU memory) runs that many swarm walkers at once instead of serially.
+- **Downstream Weighted Ensemble parallelism.** The backend device pool is
+  forwarded to the WE stage, so its walker propagation spreads across GPUs/cores.
+
+### Changed
+- **SPIB on-the-fly CV** caches features incrementally (was re-featurizing the
+  whole buffer each refresh, ~O(N²)) with an optional bounded sliding window.
+
+### Removed
+- **`MPIExecutor` / `DaskExecutor` and the `[hpc]` extra.** They were
+  non-functional (per-cycle work closing over live engine state cannot be pickled
+  across nodes) and wired to no backend. The supported scaling patterns cover
+  every practical case: single-GPU saturation, a multi-GPU/CPU downstream WE, and
+  independent pathways/replicates as Slurm/PBS array jobs. A work-queue model for
+  a single tightly-coupled multi-node run remains on the roadmap.
 
 ## [1.3.0] — 2026-07-07
 

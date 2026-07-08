@@ -10,6 +10,8 @@ class EnsemblePathRefinerFast:
     """
 
     def __init__(self, hidden_dim=64, device=None):
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.hidden_dim = hidden_dim
         self.model = None
@@ -73,6 +75,9 @@ class EnsemblePathRefinerFast:
 
         self.input_shape = avg_start.shape
         dim = avg_start.size
+
+        # Store flat configurations of all trajectories to allow mapping to nearest physical configurations
+        self.all_configs_ = np.concatenate([t.reshape(t.shape[0], -1) for t in trajectories], axis=0)
 
         # --------------------------------------------------
         # Build dataset (uniform in arc length)
@@ -179,7 +184,7 @@ class EnsemblePathRefinerFast:
     # --------------------------------------------------
     # Generate representative path
     # --------------------------------------------------
-    def transform(self, n_points=100, oversample=5):
+    def transform(self, n_points=100, oversample=5, project_to_real=False):
         self.model.eval()
 
         M = n_points * oversample
@@ -198,6 +203,15 @@ class EnsemblePathRefinerFast:
             np.interp(s_u, s, raw[:, d])
             for d in range(raw.shape[1])
         ]).T
+
+        if project_to_real and getattr(self, "all_configs_", None) is not None:
+            projected_out = []
+            for node in out:
+                diffs = self.all_configs_ - node
+                dists = np.linalg.norm(diffs, axis=1)
+                idx = np.argmin(dists)
+                projected_out.append(self.all_configs_[idx])
+            out = np.vstack(projected_out)
 
         return out.reshape(n_points, *self.input_shape)
 

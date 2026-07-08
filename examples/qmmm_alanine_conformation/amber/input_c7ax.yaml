@@ -1,7 +1,7 @@
 amber:
     topology: qmmm_ala.prmtop
     initial_restart: qmmm_ala_equilibrated.rst7
-    executable: /home/dm/Soft/miniconda3/envs/pg/bin/sander
+    executable: sander
 
 pathgennie:
     mode: target
@@ -9,7 +9,7 @@ pathgennie:
     tau1_steps: 2
     tau2_steps: 4
     max_trial: 20
-    tau1_workers: 20
+    workers_per_device: 20
     max_cycle: 5000
     save_freq: 10
     sigma: 0.1

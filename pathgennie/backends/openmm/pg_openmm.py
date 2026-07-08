@@ -222,6 +222,10 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         temperature=temperature,
         sigma=pg_cfg.get("sigma", 0.05),
         seed=pg_cfg.get("seed"),
+        # Single-GPU saturation: run this many concurrent walkers on one card
+        # ("auto" sizes from cores + free GPU memory); `devices` picks the card.
+        workers_per_device=pg_cfg.get("workers_per_device", pg_cfg.get("tau1_workers", 1)),
+        device=(pg_cfg.get("devices") or [None])[0],
     )
     downstream = pg_cfg.get("downstream")
     result = runner.run(
@@ -255,6 +259,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         run_downstream(
             downstream, stage_cfg, engine=runner.engine, traj=trajectory, metrics=metrics,
             seed_handles=seed_handles, scalar_cv_fn=scalar_cv, output_dir=output_dir,
+            executor=getattr(runner, "executor", None),
         )
     print(f"Saved frames: {len(trajectory)}")
     print(f"Metric samples: {len(metrics)}")

@@ -19,8 +19,8 @@ This implementation aligns with the methodology described in:
 - `principal_curve.py`: Expectation-maximization based curve smoothing.
 - `examples/`: Runnable, numbered scripts for the Müller-Brown toy potential
   (`muller_brown/`) and molecular systems (`AlaD/`, `CLN025/`). Each case runs as
-  a short pipeline: `1_generate_initial_path.py` → `3_run_refinement.py` →
-  `4_analyze_refinement.py`.
+  a short pipeline: `1_generate_initial_path.py` → `2_run_refinement.py` →
+  `3_analyze_refinement.py`.
 
 ## Getting Started
 
@@ -32,8 +32,8 @@ conda activate pathgennie
 
 cd pathrefinement/examples/muller_brown
 python 1_generate_initial_path.py   # build a deliberately bad initial path
-python 3_run_refinement.py          # ensemble principal-curve refinement
-python 4_analyze_refinement.py      # convergence + FES plots
+python 2_run_refinement.py          # ensemble principal-curve refinement
+python 3_analyze_refinement.py      # convergence + FES plots
 ```
 Outputs are written under `pathrefinement/examples/muller_brown/results/`. The
 `AlaD/` and `CLN025/` cases follow the same numbered sequence but require OpenMM

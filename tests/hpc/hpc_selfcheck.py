@@ -81,7 +81,7 @@ def probe_gpus():
 def probe_packages():
     versions = {}
     for mod in ("numpy", "scipy", "pydantic", "h5py", "yaml", "MDAnalysis",
-                "openmm", "torch", "mpi4py", "dask", "sklearn", "openpathsampling"):
+                "openmm", "torch", "sklearn", "openpathsampling"):
         v, _ = _try(lambda m=mod: __import__(m).__version__)
         versions[mod] = v
     return versions
@@ -182,6 +182,78 @@ def check_storage(results, tmp_dir):
                            err or "HDF5 streaming write/read OK", data))
 
 
+def check_executable_resolution(results, example_dir):
+    """Confirm the case's configured MD executable resolves the way the backend does.
+
+    The AMBER/GROMACS runners resolve ``executable`` with ``shutil.which`` so a
+    bare name from ``module load`` (``gmx``, ``pmemd.cuda``) works. A login node
+    may legitimately lack the binary, so a missing executable is reported (not a
+    hard fail); only a failure in the resolution logic itself fails the check.
+    """
+    def run():
+        import yaml
+        cfg = yaml.safe_load((Path(example_dir) / "input.yaml").read_text()) or {}
+        exe = None
+        for section in ("amber", "gromacs", "openmm"):
+            block = cfg.get(section) or {}
+            if "executable" in block:
+                exe = block["executable"]
+                break
+        if exe is None:
+            return {"executable": None, "resolved": None, "note": "no executable in config"}
+        resolved = shutil.which(str(Path(str(exe)).expanduser())) or shutil.which(str(exe))
+        return {"executable": exe, "resolved": resolved, "found": resolved is not None}
+    data, err = _try(run)
+    results.append(_result("executable_resolution", err is None,
+                           err or "PATH resolution of the configured executable ran", data))
+
+
+def check_concurrent_openmm(results):
+    """Smoke-test the single-GPU concurrent-Context pool on the CPU platform.
+
+    Builds a tiny system, requests several concurrent Contexts, and runs a few
+    segments through the pool. Skipped if OpenMM is not installed.
+    """
+    def run():
+        try:
+            from openmm import CustomExternalForce, Platform, System, VerletIntegrator, unit
+            from openmm.app import Simulation, Topology
+        except Exception:  # noqa: BLE001 - OpenMM optional
+            return "skip"
+        from pathgennie.backends.openmm.engine import OpenMMEngine
+
+        system = System()
+        for _ in range(3):
+            system.addParticle(12.0 * unit.amu)
+        force = CustomExternalForce("0.5*k*(x*x + y*y + z*z)")
+        force.addGlobalParameter("k", 10.0)
+        for i in range(3):
+            force.addParticle(i, [])
+        system.addForce(force)
+        topology = Topology()
+        residue = topology.addResidue("X", topology.addChain())
+        for _ in range(3):
+            topology.addAtom("C", None, residue)
+        sim = Simulation(topology, system, VerletIntegrator(0.002 * unit.picoseconds),
+                         Platform.getPlatformByName("CPU"))
+        engine = OpenMMEngine(sim, temperature=300.0, n_workers=3)
+        h0 = engine.create_state([[0.0, 0.0, 0.0] for _ in range(3)] * unit.nanometer)
+        handles = [engine.run_segment(engine.clone_anchor(h0), 5, randomize_velocities=True, seed=s)
+                   for s in range(4)]
+        ok = all(engine.get_coords(h).shape == (3, 3) for h in handles)
+        return {"n_workers": engine.n_workers, "segments_ok": bool(ok)}
+
+    data, err = _try(run)
+    if data == "skip":
+        results.append({"name": "concurrent_openmm", "status": "skip",
+                        "detail": "OpenMM not installed", "data": None})
+        return
+    ok = err is None and isinstance(data, dict) and data.get("segments_ok", False)
+    detail = err or (f"built {data.get('n_workers')} concurrent context(s), segments OK"
+                     if isinstance(data, dict) else "ran")
+    results.append(_result("concurrent_openmm", ok, detail, data if isinstance(data, dict) else None))
+
+
 def check_unit_tests(results):
     """Run the repository unit suite (fast, no MD binaries)."""
     def run():
@@ -234,7 +306,9 @@ def main():
     check_import(checks)
     check_device_resolution(checks)
     check_config(checks, args.example)
+    check_executable_resolution(checks, args.example)
     check_toy_reproducibility(checks)
+    check_concurrent_openmm(checks)
     check_storage(checks, args.tmp)
     if not args.skip_unit_tests:
         check_unit_tests(checks)

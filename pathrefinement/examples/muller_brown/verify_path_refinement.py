@@ -1,5 +1,5 @@
 """
-test_path_refinement.py
+verify_path_refinement.py
 ─────────────────────────
 Comprehensive test of the Muller-Brown path refinement methodology.
 
@@ -11,7 +11,7 @@ Tests:
 5. Test that iterative refinement approaches the physically correct path
 6. Verify the path stays within the physically valid region
 
-Run: conda run -n pathgennie python3 test_path_refinement.py
+Run: conda run -n pathgennie python3 verify_path_refinement.py
 """
 
 import os
@@ -26,6 +26,25 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from pathrefinement.pathcv import PathCV
 from pathrefinement.principal_curve import PrincipalCurve
+
+def discrete_frechet(P, Q):
+    """Computes the discrete Frechet distance between two paths P and Q."""
+    n = len(P)
+    m = len(Q)
+    dt = np.full((n, m), -1.0)
+    dt[0, 0] = np.linalg.norm(P[0] - Q[0])
+    for i in range(1, n):
+        dt[i, 0] = max(dt[i-1, 0], np.linalg.norm(P[i] - Q[0]))
+    for j in range(1, m):
+        dt[0, j] = max(dt[0, j-1], np.linalg.norm(P[0] - Q[j]))
+    for i in range(1, n):
+        for j in range(1, m):
+            dt[i, j] = max(
+                min(dt[i-1, j], dt[i, j-1], dt[i-1, j-1]),
+                np.linalg.norm(P[i] - Q[j])
+            )
+    return dt[n-1, m-1]
+
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(__file__)
@@ -66,7 +85,7 @@ def load_all_paths():
     return paths, labels
 
 
-def test_existing_results():
+def check_existing_results():
     """Test 1: Verify all expected result files exist."""
     print("=" * 60)
     print("TEST 1: Verify existing result files")
@@ -101,7 +120,7 @@ def test_existing_results():
     return all_ok
 
 
-def test_pathcv_construction():
+def check_pathcv_construction():
     """Test 2: Verify PathCV can be constructed from paths and computes (s, z) correctly."""
     print("=" * 60)
     print("TEST 2: PathCV construction and (s, z) computation")
@@ -150,7 +169,7 @@ def test_pathcv_construction():
     return True
 
 
-def test_refinement_convergence():
+def check_refinement_convergence():
     """Test 3: Verify the refinement converged (decreasing displacement)."""
     print("=" * 60)
     print("TEST 3: Refinement convergence analysis")
@@ -175,11 +194,8 @@ def test_refinement_convergence():
         msd = np.mean(np.sum(diff ** 2, axis=1))
         max_d = np.max(np.linalg.norm(diff, axis=1))
 
-        # Quick Frechet distance (discrete)
-        # For two curves p and q of same length, the discrete Frechet distance
-        d1 = np.max(np.min(np.linalg.norm(paths[i][:, None, :] - paths[i-1][None, :, :], axis=2), axis=0))
-        d2 = np.max(np.min(np.linalg.norm(paths[i][:, None, :] - paths[i-1][None, :, :], axis=2), axis=1))
-        frechet = max(d1, d2)
+        # True discrete Frechet distance
+        frechet = discrete_frechet(paths[i], paths[i - 1])
 
         msd_vals.append(msd)
         max_d_vals.append(max_d)
@@ -207,7 +223,7 @@ def test_refinement_convergence():
     return convergence_achieved
 
 
-def test_endpoint_pinning():
+def check_endpoint_pinning():
     """Test 4: Verify path endpoints remain pinned to the known minima."""
     print("=" * 60)
     print("TEST 4: Endpoint pinning verification")
@@ -232,7 +248,7 @@ def test_endpoint_pinning():
     return all_ok
 
 
-def test_physically_valid_path():
+def check_physically_valid_path():
     """Test 5: Verify paths remain in physically valid region (no excessive excursions)."""
     print("=" * 60)
     print("TEST 5: Physical validity check")
@@ -267,7 +283,7 @@ def test_physically_valid_path():
     return all_ok
 
 
-def test_principal_curve_standalone():
+def check_principal_curve_standalone():
     """Test 6: Test PrincipalCurve on synthetic noisy path."""
     print("=" * 60)
     print("TEST 6: PrincipalCurve standalone test")
@@ -319,7 +335,7 @@ def test_principal_curve_standalone():
     return all_ok
 
 
-def test_path_history_consistency():
+def check_path_history_consistency():
     """Test 7: Verify path_history.npz contains sequential iterations."""
     print("=" * 60)
     print("TEST 7: Path history consistency")
@@ -361,13 +377,13 @@ def main():
     print("█" * 60 + "\n")
 
     tests = [
-        ("Existing Results", test_existing_results),
-        ("PathCV Construction", test_pathcv_construction),
-        ("Refinement Convergence", test_refinement_convergence),
-        ("Endpoint Pinning", test_endpoint_pinning),
-        ("Physical Validity", test_physically_valid_path),
-        ("PrincipalCurve Standalone", test_principal_curve_standalone),
-        ("Path History Consistency", test_path_history_consistency),
+        ("Existing Results", check_existing_results),
+        ("PathCV Construction", check_pathcv_construction),
+        ("Refinement Convergence", check_refinement_convergence),
+        ("Endpoint Pinning", check_endpoint_pinning),
+        ("Physical Validity", check_physically_valid_path),
+        ("PrincipalCurve Standalone", check_principal_curve_standalone),
+        ("Path History Consistency", check_path_history_consistency),
     ]
 
     results = {}

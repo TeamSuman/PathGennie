@@ -20,10 +20,10 @@ import numpy as np
 from openmm.app import Simulation
 
 from pathgennie.core.driver import PathGennieDriver
-from pathgennie.core.parallel import SerialExecutor
+from pathgennie.core.parallel import SerialExecutor, ThreadDevicePool
 from pathgennie.core.progress import EscapeMetric, TargetMetric
 
-from .engine import OpenMMEngine
+from .engine import OpenMMEngine, resolve_worker_count
 
 
 class PathGennieMD:
@@ -42,6 +42,8 @@ class PathGennieMD:
         temperature: float = 300.0,
         sigma: float = 0.5,
         seed: Optional[int] = None,
+        workers_per_device=1,
+        device: Optional[int] = None,
     ):
         if mode not in ("escape", "target"):
             raise ValueError("mode must be 'escape' or 'target'")
@@ -60,6 +62,8 @@ class PathGennieMD:
         self.temperature = temperature
         self.sigma = sigma
         self.seed = seed
+        self.workers_per_device = workers_per_device
+        self.device = device
 
     def run(
         self,
@@ -72,7 +76,13 @@ class PathGennieMD:
         verbosity: int = 1,
         collect_seeds: bool = False,
     ):
-        engine = OpenMMEngine(self.sim, self.temperature)
+        # Single-GPU saturation: build a pool of concurrent Contexts sized from
+        # workers_per_device (an int, or "auto" -> cores capped by free GPU memory).
+        n_workers = resolve_worker_count(self.workers_per_device, self.device)
+        engine = OpenMMEngine(
+            self.sim, self.temperature,
+            n_workers=n_workers, device=self.device, verbose=verbosity >= 1,
+        )
         self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)
         start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
@@ -91,9 +101,18 @@ class PathGennieMD:
         def convergence(coords: np.ndarray) -> bool:
             return bool(converge_fn(coords, **converge_args))
 
+        # One GPU, several concurrent walkers: a thread pool of engine.n_workers
+        # runs segments on the single card. Falls back to a plain serial path when
+        # only one Context could be built (no regression on tiny/CPU runs).
+        dev_list = [self.device] if self.device is not None else None
+        if engine.n_workers > 1:
+            executor = ThreadDevicePool(devices=dev_list, workers_per_device=engine.n_workers)
+        else:
+            executor = SerialExecutor(device=self.device)
+        self.executor = executor  # exposed so a downstream stage can reuse the pool
         driver = PathGennieDriver(
             engine, progress, convergence,
-            executor=SerialExecutor(),
+            executor=executor,
             sigma=self.sigma, seed=self.seed, verbosity=verbosity,
         )
         return driver.run(
