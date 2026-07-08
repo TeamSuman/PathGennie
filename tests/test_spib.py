@@ -85,3 +85,38 @@ def test_spib_progress_drives_and_switches_to_learned_cv():
     learned_cv = progress.project(engine.get_coords(initial))
     assert learned_cv.shape == (1,)  # latent_dim
     assert traj.shape[0] >= 1
+
+
+def test_spib_progress_caches_features_and_bounds_buffer():
+    """Incremental feature caching must equal re-featurizing, and honour max_buffer.
+
+    This is the on-the-fly-SPIB performance/memory fix: features are cached when a
+    frame is observed (O(1)) instead of re-featurizing the whole raw-coordinate
+    buffer on every refresh (O(N^2) cumulatively), and ``max_buffer`` bounds host
+    memory with a most-recent sliding window while preserving the start frame.
+    """
+    from pathgennie.core.progress import EscapeMetric
+    from pathgennie.cv.features import Featurizer
+
+    featurizer = Featurizer(funcs=[], standardize=False)  # raw(coords) == coords.ravel()
+    bootstrap = EscapeMetric(lambda c: np.array([c[0, 0]]), start_cv=np.array([0.0]), escape_metric="cv0")
+
+    prog = SPIBProgress(
+        featurizer, bootstrap, mode="escape",
+        refresh_every=10_000, min_frames=10_000,  # never trigger training here
+        max_buffer=5,
+    )
+    coords = [np.array([[float(i), 0.0, 0.0]]) for i in range(8)]
+    for i, c in enumerate(coords):
+        prog.observe(c, cycle=i)
+
+    # Sliding window keeps only the most recent max_buffer frames ...
+    assert len(prog._features) == 5
+    # ... but the original start frame is retained separately for the start latent.
+    np.testing.assert_allclose(prog._feature_start, featurizer.raw(coords[0]))
+    # Cached features equal re-featurizing the corresponding raw coords (equivalence
+    # with the previous re-featurize-everything path).
+    for cached, c in zip(prog._features, coords[-5:]):
+        np.testing.assert_allclose(cached, featurizer.raw(c))
+    # min_frames not reached -> no training was triggered.
+    assert prog.result is None
