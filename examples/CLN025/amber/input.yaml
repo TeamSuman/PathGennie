@@ -5,7 +5,7 @@ amber:
     topology: chignolin.prmtop
     initial_restart: unfolded.rst7
     mdin: mdin
-    executable: /home/dm/Soft/pmemd26/bin/pmemd
+    executable: pmemd
     # For an MPI Amber executable, use e.g.:
     # executable: /path/to/pmemd.MPI
     # mpi_launcher: mpirun
@@ -21,8 +21,8 @@ pathgennie:
     # max_trial: Number of parallel trajectories per cycle
     max_trial: 10
     # Number of independent tau1 walkers to run at the same time.
-    # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
-    tau1_workers: 10
+    # Total cores with MPI per walker = workers_per_device * amber.mpi_ranks.
+    workers_per_device: 10
     # max_cycle: Maximum escape cycles before stopping
     max_cycle: 5000
     # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)

@@ -55,13 +55,17 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, amber_cfg["topology"])
     initial_restart = resolve_case_path(case_dir, amber_cfg["initial_restart"])
-    executable = Path(amber_cfg["executable"]).expanduser()
+    import shutil
+    executable_str = amber_cfg["executable"]
+    expanded_path = str(Path(executable_str).expanduser())
+    resolved_exe = shutil.which(expanded_path) or shutil.which(executable_str)
+    if resolved_exe is None:
+        raise FileNotFoundError(f"Amber executable not found: {executable_str}")
+    executable = Path(resolved_exe)
 
     missing = [str(path) for path in (topology, initial_restart) if not path.exists()]
     if missing:
         raise FileNotFoundError("Missing required input file(s): " + ", ".join(missing))
-    if not executable.exists():
-        raise FileNotFoundError(f"Amber executable not found: {executable}")
 
     topology_info = parse_prmtop(topology)
     temperature = float(pg_cfg.get("temperature", 300.0))
@@ -185,6 +189,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         run_downstream(
             downstream, stage_cfg, engine=engine, traj=traj, metrics=metrics,
             seed_handles=seed_handles, scalar_cv_fn=scalar_cv, output_dir=output_dir,
+            executor=executor,
         )
 
     shutil.rmtree(scratch_dir)

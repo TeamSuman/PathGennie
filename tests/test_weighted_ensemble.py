@@ -147,3 +147,41 @@ def test_make_stage_builds_opes():
     from pathgennie.sampling.opes import OPESStage
     stage = make_stage("opes", mode="toy", cv_axis=1)
     assert isinstance(stage, OPESStage)
+
+
+def test_we_spreads_walkers_across_device_pool():
+    """Given a ThreadDevicePool, WE walker propagation must run across its devices.
+
+    This is the downstream multi-GPU/multi-core path: the same device pool the
+    discovery swarm used is forwarded to WE so its (embarrassingly parallel)
+    walker segments spread instead of running serially.
+    """
+    import threading
+
+    from pathgennie.core.parallel import ThreadDevicePool
+
+    engine, ens = _toy_path_ensemble()
+
+    seen = set()
+    lock = threading.Lock()
+    original = engine.run_segment
+
+    def tracking(handle, steps, *, randomize_velocities=True, seed=None, device=None):
+        with lock:
+            seen.add(device)
+        return original(handle, steps, randomize_velocities=randomize_velocities,
+                        seed=seed, device=device)
+
+    engine.run_segment = tracking
+
+    stage = make_stage(
+        "weighted_ensemble",
+        cv_fn=lambda c: c[0, 1], tau_steps=5, n_iterations=10,
+        n_bins=8, target_count=4, seed=1,
+        executor=ThreadDevicePool(devices=[0, 1, 2, 3], workers_per_device=1),
+    )
+    result = stage.run(ens, engine)
+
+    np.testing.assert_allclose(result.metadata["weight_trace"], 1.0, atol=1e-9)
+    # Walkers actually ran on more than one device of the pool.
+    assert len([d for d in seen if d is not None]) >= 2

@@ -5,7 +5,7 @@ gromacs:
     topology: topol.top
     initial_structure: box.gro
     mdp: NVT.mdp
-    executable: /home/dm/Soft/GMX26/bin/gmx
+    executable: gmx
     reference_template: box.gro
     mdrun_args:
         - -nt
@@ -34,8 +34,8 @@ pathgennie:
     # max_trial: Number of parallel trajectories per cycle
     max_trial: 10
     # Number of independent tau1 walkers to run at the same time.
-    # Total cores with MPI per walker = tau1_workers * amber.mpi_ranks.
-    tau1_workers: 10
+    # Total cores with MPI per walker = workers_per_device * gromacs.mpi_ranks.
+    workers_per_device: 10
     # max_cycle: Maximum escape cycles before stopping
     max_cycle: 5000
     # sigma: Boltzmann bias strength (higher = more exploration, lower = greedier)

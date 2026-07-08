@@ -1,7 +1,7 @@
 amber:
     topology: ala_dipeptide.prmtop
     initial_restart: ala_dipeptide_equilibrated.rst7
-    executable: /home/dm/Soft/pmemd26/bin/pmemd
+    executable: pmemd
 
 pathgennie:
     mode: target
@@ -9,7 +9,7 @@ pathgennie:
     tau1_steps: 2
     tau2_steps: 4
     max_trial: 10
-    tau1_workers: 10
+    workers_per_device: 10
     max_cycle: 5000
     save_freq: 10
     sigma: 0.1

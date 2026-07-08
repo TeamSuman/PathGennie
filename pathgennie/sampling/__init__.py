@@ -45,15 +45,21 @@ __all__ = [
 ]
 
 
-def make_stage(name: str, **cfg):
+def make_stage(name: str, *, executor=None, **cfg):
     """Construct an enhanced-sampling stage by ``downstream`` name.
 
     Recognised: ``weighted_ensemble`` (aliases ``we``/``wess``), ``opes``, and
     ``tps``/``tis`` (OpenPathSampling, for kinetics).
+
+    ``executor`` (a :class:`~pathgennie.core.parallel.ParallelExecutor`) is only
+    forwarded to Weighted Ensemble, whose walker propagation parallelises across
+    it; other stages ignore it. A ``None`` executor leaves WE on its serial default.
     """
 
     key = str(name).lower()
     if key in ("weighted_ensemble", "we", "wess"):
+        if executor is not None:
+            cfg["executor"] = executor
         return WeightedEnsembleStage(**cfg)
     if key == "opes":
         return OPESStage(**cfg)
