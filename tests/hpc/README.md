@@ -25,7 +25,7 @@ session) that will interpret the JSON and, if needed, debug the code or scripts.
    ```bash
    git clone <repo> && cd PathGennie
    conda env create -f environment.yml && conda activate pathgennie
-   pip install -e ".[dev]"          # add [ml] for SPIB, [hpc] for MPI/Dask
+   pip install -e ".[dev]"          # add [ml] for SPIB / on-the-fly CV
    ```
 2. **Edit the `# EDIT:` lines** in the job script for your cluster: `module load`
    lines, `conda activate`, the partition/queue/account directives, and the
@@ -77,11 +77,9 @@ python tests/hpc/hpc_selfcheck.py --out tests/hpc/results/login/selfcheck.json
   spreads across multiple GPUs/cores — it reuses the same device pool, so listing
   several `devices` distributes its walkers. For multi-node, run independent
   pathways/replicates as **Slurm/PBS array jobs**.
-- The **multi-node** executors (`MPIExecutor`, `DaskExecutor`) are experimental
-  stubs and **not yet functional** — constructing one now raises a clear error
-  pointing at the patterns above (rather than a cryptic pickle failure), because
-  the driver's per-cycle work captures live engine state. On the roadmap
-  (`ROADMAP.md`); see `docs/HPC_REVIEW.md`.
+- There is **no in-process multi-node executor** — for multi-node throughput use
+  independent Slurm/PBS array jobs (above). A work-queue manager for a single
+  tightly-coupled multi-node run is on the roadmap (`ROADMAP.md`).
 - Scratch defaults to the case's `workdir`. On production runs point it (and
   `$TMPDIR`) at **node-local SSD**, not shared Lustre/NFS — thousands of
   ultrashort segments hammer a shared metadata server. See `DEBUGGING.md`.

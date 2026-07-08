@@ -84,11 +84,11 @@ These need domain decisions or real-hardware validation; each has a suggested
 direction. Grouped by subsystem.
 
 ### Core driver / parallelism
-- **[OPEN, High] No working multi-node executor.** `MPIExecutor`/`DaskExecutor`
-  map a nested closure that captures the live engine/anchor; nested closures and
-  an OpenMM `Simulation` are not picklable, so both raise on first use. *Fix:*
-  ship only picklable payloads (positions+velocities+segment params); each worker
-  owns a process-local engine; use module-level functions.
+- **[RESOLVED] Multi-node executors removed.** `MPIExecutor`/`DaskExecutor` were
+  non-functional (nested closures capturing a live, unpicklable engine) and wired
+  to no backend, so they were removed along with the `[hpc]` extra. Multi-node
+  throughput is served by independent pathways/replicates as Slurm/PBS array jobs;
+  a work-queue manager for a single tightly-coupled run stays on the roadmap.
 - **[OPEN, High] OpenMM has no multi-GPU path.** `pg_omm` hardcodes
   `SerialExecutor`; the promised process pool ("one Context per GPU") is not
   implemented. *Fix:* a `ProcessDevicePool` that builds one `Simulation` per

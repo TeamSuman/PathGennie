@@ -39,8 +39,6 @@ __all__ = [
     "ParallelExecutor",
     "SerialExecutor",
     "ThreadDevicePool",
-    "MPIExecutor",
-    "DaskExecutor",
     "resolve_devices",
     "resolve_cuda_visible_device",
 ]
@@ -145,71 +143,3 @@ class ThreadDevicePool:
 
     def shutdown(self) -> None:  # pragma: no cover - trivial
         pass
-
-
-class MPIExecutor:
-    """Distribute trials over an MPI cluster using mpi4py.futures.MPIPoolExecutor.
-
-    Requires ``mpi4py``. The main script must be run with ``mpiexec``.
-    """
-
-    def __init__(self, devices: Optional[Sequence[int]] = None, workers_per_device: int = 1):
-        self.devices = resolve_devices(devices)
-        self.workers_per_device = max(1, int(workers_per_device))
-        self._max_workers = len(self.devices) * self.workers_per_device
-        
-        try:
-            from mpi4py.futures import MPIPoolExecutor
-        except ImportError:
-            raise ImportError("mpi4py is required to use MPIExecutor. Install with 'pip install mpi4py'.")
-            
-        self._pool = MPIPoolExecutor()
-
-    def map(self, worker_fn: Callable[[T, Optional[int]], R], items: Sequence[T]) -> List[R]:
-        items = list(items)
-        if not items:
-            return []
-            
-        def run(indexed_item):
-            index, item = indexed_item
-            device = self.devices[index % len(self.devices)]
-            return worker_fn(item, device)
-
-        return list(self._pool.map(run, enumerate(items)))
-
-    def shutdown(self) -> None:
-        self._pool.shutdown()
-
-
-class DaskExecutor:
-    """Distribute trials over a Dask cluster using dask.distributed.Client.
-    
-    Requires ``dask[distributed]``.
-    """
-
-    def __init__(self, devices: Optional[Sequence[int]] = None, workers_per_device: int = 1, address: Optional[str] = None):
-        self.devices = resolve_devices(devices)
-        self.workers_per_device = max(1, int(workers_per_device))
-        
-        try:
-            from dask.distributed import Client
-        except ImportError:
-            raise ImportError("dask.distributed is required to use DaskExecutor. Install with 'pip install dask[distributed]'.")
-            
-        self._client = Client(address)
-
-    def map(self, worker_fn: Callable[[T, Optional[int]], R], items: Sequence[T]) -> List[R]:
-        items = list(items)
-        if not items:
-            return []
-            
-        def run(indexed_item):
-            index, item = indexed_item
-            device = self.devices[index % len(self.devices)]
-            return worker_fn(item, device)
-
-        futures = self._client.map(run, enumerate(items))
-        return self._client.gather(futures)
-
-    def shutdown(self) -> None:
-        self._client.close()

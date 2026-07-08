@@ -41,10 +41,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-hpc = [
-  "mpi4py",
-  "dask[distributed]",
-]
 docs = [
   "mkdocs-material",
   "mkdocstrings[python]",

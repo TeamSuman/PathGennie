@@ -113,8 +113,11 @@ pathgennie amber                     # or: python run_pg_amber.py
 
 ## Multi-node
 
-Multi-node scale-out (the `MPIExecutor` / `DaskExecutor` stubs) is **not yet
-production-ready** — the per-cycle work cannot currently be serialized across
-processes. Today, scale *within* a node across its GPUs, and run independent
-cases as separate array-job tasks. Robust multi-node support (a work-queue model
-like WESTPA's ZeroMQ manager) is on the [roadmap](HPC_REVIEW.md).
+There is no in-process multi-node executor, and none is needed for the common
+case. Scale *within* a node: path discovery saturates a single GPU with
+concurrent walkers, and the downstream Weighted Ensemble spreads across the
+device pool. For more throughput, run independent pathways/replicates as
+**separate Slurm/PBS array-job tasks** — the practical multi-node pattern, and
+the one the path-resolved-kinetics workflow already uses to compute per-channel
+rates separately. A work-queue model for a single tightly-coupled multi-node run
+(like WESTPA's ZeroMQ manager) is on the [roadmap](roadmap.md).

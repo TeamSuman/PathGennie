@@ -81,7 +81,7 @@ def probe_gpus():
 def probe_packages():
     versions = {}
     for mod in ("numpy", "scipy", "pydantic", "h5py", "yaml", "MDAnalysis",
-                "openmm", "torch", "mpi4py", "dask", "sklearn", "openpathsampling"):
+                "openmm", "torch", "sklearn", "openpathsampling"):
         v, _ = _try(lambda m=mod: __import__(m).__version__)
         versions[mod] = v
     return versions
