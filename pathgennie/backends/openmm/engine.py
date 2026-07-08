@@ -1,73 +1,219 @@
 """OpenMM in-process engine adapter for the PathGennie core driver.
 
-Wraps a single ``openmm.app.Simulation`` (one Context, one device) behind the
-:class:`pathgennie.core.engine.Engine` protocol so the shared
-:class:`~pathgennie.core.driver.PathGennieDriver` can run the OpenMM backend.
+Wraps one or more ``openmm.Context`` objects — all sharing a single ``System`` on
+a **single GPU** — behind the :class:`pathgennie.core.engine.Engine` protocol so
+the shared :class:`~pathgennie.core.driver.PathGennieDriver` can run the OpenMM
+backend and *saturate that one card*.
 
-A *handle* is an integer id into a cache of immutable OpenMM ``State`` snapshots.
-Because a ``State`` is immutable, ``clone_anchor`` can hand out a new id that
-shares the same snapshot — ``run_segment`` always ``setState``s, steps, and then
-stores a *new* snapshot, so trials never alias mutable state.  ``setState``/
-``getState`` round-trip positions, velocities **and periodic box vectors**, which
-fixes the box-desync issue in the original loop that only set the box at build
-time.
+Single-GPU saturation (not multi-GPU)
+-------------------------------------
+Path generation is lightweight, so rather than spreading across GPUs the OpenMM
+backend keeps **one GPU busy** by running several swarm walkers concurrently on
+it. Each concurrent walker needs its own ``Context`` (a Context is not
+thread-safe), but every Context is built from the *same* ``System``, and an
+OpenMM ``State`` snapshot is portable across Contexts of the same System. So the
+engine keeps:
 
-For multi-GPU in-process execution, construct one ``OpenMMEngine`` per worker
-process (each with a Simulation pinned to its ``CudaDeviceIndex``); OpenMM
-Contexts are not thread-safe, so a process pool — not threads — is required.
+* a pool of ``n_workers`` Contexts on the one device, handed out one-per-thread
+  through a thread-safe queue (OpenMM releases the GIL during ``step()``, so the
+  threads genuinely overlap on the GPU); and
+* a single immutable-``State`` cache (handles are ints into it), guarded by a
+  lock, so any Context can ``setState`` any snapshot.
 
-Reproducibility note: the driver's selection draws and the per-segment velocity
-randomisation are seeded and reproducible.  A *stochastic* integrator's noise
-stream (e.g. Langevin thermostat) is initialised at context creation and is not
-reliably re-seedable per segment in OpenMM, so bit-identical trajectories are
-only guaranteed with a deterministic integrator (e.g. Verlet).  The best-effort
-``setRandomNumberSeed`` below helps engines/platforms that honour it.
+``n_workers`` can be sized adaptively (``resolve_worker_count`` + a
+free-GPU-memory check while the pool is built): grow until either the core count
+or the GPU memory budget is reached. With ``n_workers=1`` the engine is exactly
+the original single-Context adapter — no extra Contexts are built.
+
+A *handle* is an integer id into the State cache. ``setState``/``getState``
+round-trip positions, velocities **and periodic box vectors**.
+
+Reproducibility note: the driver's selection draws and per-segment velocity
+randomisation are seeded, so with a deterministic integrator (e.g. Verlet) a run
+is reproducible regardless of which pooled Context executes a segment (the State
+fully determines it). A stochastic integrator's noise stream is per-Context and
+not reliably re-seedable per segment in OpenMM, so bit-identical trajectories are
+only guaranteed with a deterministic integrator — the same caveat as the
+single-Context engine.
 """
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+import os
+import queue
+import subprocess
+import threading
+from typing import Dict, List, Optional
 
 import numpy as np
-from openmm import State, unit
+from openmm import Context, State, XmlSerializer, unit
 from openmm.app import Simulation
 
 from pathgennie.core.engine import Handle
-from pathgennie.core.progress import ProgressVariable
 
 NM_TO_ANG = 10.0
 
-__all__ = ["OpenMMEngine"]
+__all__ = ["OpenMMEngine", "resolve_worker_count"]
+
+
+# --------------------------------------------------------------------------- #
+# Adaptive worker-count helpers
+# --------------------------------------------------------------------------- #
+def _cpu_worker_cap() -> int:
+    """Upper bound on concurrent workers from the scheduler's core allocation."""
+    for var in ("SLURM_CPUS_PER_TASK", "NCPUS"):
+        v = os.environ.get(var)
+        if v and v.strip().isdigit() and int(v) > 0:
+            return int(v)
+    return os.cpu_count() or 1
+
+
+def _gpu_free_total_bytes(device: Optional[int] = None):
+    """Return ``(free, total)`` GPU memory in bytes, or ``None`` if unknown.
+
+    Tries torch, then pynvml, then ``nvidia-smi``. ``device`` is a logical index
+    interpreted within the current ``CUDA_VISIBLE_DEVICES`` mask (each probe uses
+    the same numbering the process sees).
+    """
+    idx = 0 if device is None else int(device)
+    try:  # torch respects CUDA_VISIBLE_DEVICES numbering
+        import torch
+
+        if torch.cuda.is_available():
+            probe = idx if idx < torch.cuda.device_count() else 0
+            free, total = torch.cuda.mem_get_info(probe)
+            return int(free), int(total)
+    except Exception:  # noqa: BLE001 - best-effort probe
+        pass
+    try:
+        import pynvml
+
+        pynvml.nvmlInit()
+        try:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(idx)
+            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            return int(mem.free), int(mem.total)
+        finally:
+            pynvml.nvmlShutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free,memory.total",
+             "--format=csv,noheader,nounits", "-i", str(idx)],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip().splitlines()
+        if out:
+            free_mb, total_mb = (int(x.strip()) for x in out[0].split(","))
+            return free_mb * 1024 * 1024, total_mb * 1024 * 1024
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def resolve_worker_count(requested, device: Optional[int] = None) -> int:
+    """Upper bound on concurrent OpenMM Contexts to *attempt* to build.
+
+    ``"auto"`` → the CPU-core cap; an int → that many; ``None``/≤1 → 1. The engine
+    further caps this by free GPU memory while it builds the pool, so ``"auto"``
+    is safe even on a busy card.
+    """
+    if isinstance(requested, str):
+        if requested.strip().lower() == "auto":
+            return max(1, _cpu_worker_cap())
+        requested = int(requested)
+    if requested is None:
+        return 1
+    return max(1, int(requested))
 
 
 class OpenMMEngine:
-    def __init__(self, simulation: Simulation, temperature: float):
+    def __init__(
+        self,
+        simulation: Simulation,
+        temperature: float,
+        *,
+        n_workers=1,
+        device: Optional[int] = None,
+        mem_safety: float = 0.15,
+        verbose: bool = False,
+    ):
         self.sim = simulation
         self.temperature = temperature * unit.kelvin  # type: ignore
         self._cache: Dict[int, State] = {}
         self._next_id = 0
+        self._lock = threading.Lock()
 
+        # Build the Context pool on the single device. Context 0 is the passed
+        # Simulation's own Context; extras are clones of the same System.
+        cap = resolve_worker_count(n_workers, device)
+        self._contexts: List[Context] = [simulation.context]
+        self._build_pool(cap, mem_safety, device, verbose)
+        self.n_workers = len(self._contexts)
+
+        self._pool: "queue.Queue[Context]" = queue.Queue()
+        for ctx in self._contexts:
+            self._pool.put(ctx)
+
+    # -- pool construction ---------------------------------------------------
+    def _clone_context(self) -> Context:
+        # A Context owns its integrator, so each clone needs a fresh copy.
+        integrator = XmlSerializer.deserialize(XmlSerializer.serialize(self.sim.integrator))
+        platform = self.sim.context.getPlatform()
+        props = {}
+        try:  # pin extras to the same physical device as the primary Context
+            name = platform.getName()
+            key = {"CUDA": "DeviceIndex", "OpenCL": "OpenCLDeviceIndex"}.get(name)
+            if key is not None:
+                idx = platform.getPropertyValue(self.sim.context, key)
+                if idx not in (None, ""):
+                    props[key] = idx
+        except Exception:  # noqa: BLE001 - properties are best-effort
+            props = {}
+        if props:
+            return Context(self.sim.system, integrator, platform, props)
+        return Context(self.sim.system, integrator, platform)
+
+    def _build_pool(self, cap: int, mem_safety: float, device: Optional[int], verbose: bool) -> None:
+        while len(self._contexts) < cap:
+            free_total = _gpu_free_total_bytes(device)
+            if free_total is not None and free_total[0] < mem_safety * free_total[1]:
+                break  # memory-limited: stop growing the pool
+            try:
+                self._contexts.append(self._clone_context())
+            except Exception as exc:  # noqa: BLE001 - fall back to what we have
+                if verbose:
+                    print(f"OpenMMEngine: stopped context pool at {len(self._contexts)} ({exc})")
+                break
+        if verbose:
+            print(f"OpenMMEngine: {len(self._contexts)} concurrent context(s) on the GPU")
+
+    # -- cache helpers (thread-safe) -----------------------------------------
     def _store(self, state: State) -> int:
-        handle = self._next_id
-        self._next_id += 1
-        self._cache[handle] = state
+        with self._lock:
+            handle = self._next_id
+            self._next_id += 1
+            self._cache[handle] = state
         return handle
 
-    def _snapshot(self) -> State:
-        return self.sim.context.getState(getPositions=True, getVelocities=True)
-
     def create_state(self, positions, box_vectors=None) -> int:
-        """Initialise the cache from positions (and optional box); return a handle."""
-        self.sim.context.setPositions(positions)
+        """Initialise the cache from positions (and optional box); return a handle.
+
+        Called once before the concurrent loop, so it uses the primary Context.
+        """
+        ctx = self.sim.context
+        ctx.setPositions(positions)
         if box_vectors is not None:
-            self.sim.context.setPeriodicBoxVectors(*box_vectors)
-        self.sim.context.setVelocitiesToTemperature(self.temperature)
-        return self._store(self._snapshot())
+            ctx.setPeriodicBoxVectors(*box_vectors)
+        ctx.setVelocitiesToTemperature(self.temperature)
+        return self._store(ctx.getState(getPositions=True, getVelocities=True))
 
     def clone_anchor(self, handle: Handle) -> Handle:
         # State is immutable; sharing the snapshot is safe.
         assert isinstance(handle, int)
-        return self._store(self._cache[handle])
+        with self._lock:
+            state = self._cache[handle]
+        return self._store(state)
 
     def run_segment(
         self,
@@ -79,22 +225,31 @@ class OpenMMEngine:
         device: Optional[int] = None,
     ) -> Handle:
         assert isinstance(handle, int)
-        self.sim.context.setState(self._cache[handle])
-        # Seed the integrator's own RNG (e.g. Langevin thermostat noise) so a
-        # segment is reproducible; setVelocitiesToTemperature's seed only covers
-        # the initial velocity draw, not the noise injected during stepping.
+        with self._lock:
+            state = self._cache[handle]
+        # Borrow a Context for the duration of this segment; no other thread can
+        # touch it while we hold it, so stepping is safe.
+        ctx = self._pool.get()
         try:
-            self.sim.integrator.setRandomNumberSeed(int(seed))
-        except AttributeError:  # integrator without an RNG (e.g. Verlet)
-            pass
-        if randomize_velocities:
-            self.sim.context.setVelocitiesToTemperature(self.temperature, int(seed))
-        self.sim.step(int(n_steps))
-        return self._store(self._snapshot())
+            ctx.setState(state)
+            integrator = ctx.getIntegrator()
+            try:
+                integrator.setRandomNumberSeed(int(seed))
+            except AttributeError:  # integrator without an RNG (e.g. Verlet)
+                pass
+            if randomize_velocities:
+                ctx.setVelocitiesToTemperature(self.temperature, int(seed))
+            integrator.step(int(n_steps))
+            new_state = ctx.getState(getPositions=True, getVelocities=True)
+        finally:
+            self._pool.put(ctx)
+        return self._store(new_state)
 
     def get_coords(self, handle: Handle) -> np.ndarray:
         assert isinstance(handle, int)
-        pos = self._cache[handle].getPositions(asNumpy=True).value_in_unit(unit.nanometer)  # type: ignore
+        with self._lock:
+            state = self._cache[handle]
+        pos = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer)  # type: ignore
         coords = np.asarray(pos, dtype=float) * NM_TO_ANG
         if not np.all(np.isfinite(coords)):
             raise ValueError("OpenMM segment produced non-finite coordinates (unstable dynamics?)")
@@ -102,4 +257,5 @@ class OpenMMEngine:
 
     def release(self, handle: Handle) -> None:
         assert isinstance(handle, int)
-        self._cache.pop(handle, None)
+        with self._lock:
+            self._cache.pop(handle, None)

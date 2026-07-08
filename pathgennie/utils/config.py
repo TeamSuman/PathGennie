@@ -16,7 +16,7 @@ backend crashed with ``KeyError: 'tau1_steps'``. Both problems are fixed here.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,7 +55,9 @@ class PathGennieConfig(BaseModel):
 
     # Parallel / device placement.
     devices: Optional[List[int]] = Field(None, description="Logical GPU indices for the swarm")
-    workers_per_device: Optional[int] = Field(None, gt=0, description="Concurrent segments per device")
+    workers_per_device: Optional[Union[int, Literal["auto"]]] = Field(
+        None, description="Concurrent segments per device (int), or 'auto' for OpenMM single-GPU saturation"
+    )
     tau1_workers: Optional[int] = Field(None, gt=0, description="Legacy alias for workers_per_device")
     cpu_threads_per_worker: Optional[int] = Field(
         None, gt=0, description="OMP/MKL threads exported per subprocess worker (CPU oversubscription guard)"
