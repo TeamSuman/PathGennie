@@ -308,6 +308,26 @@ def write_trajectory(
         write_native_trajectory(path, topology_info, frames, dt=dt)
 
 
+def read_native_trajectory(path: Path) -> np.ndarray:
+    """Read a binary trajectory and return all frames as ``(n_frames, n_atoms, 3)`` in Ångström.
+
+    Supports any format MDAnalysis can open without a topology
+    (``.xtc``, ``.nc``, ``.dcd``, ``.trr``, etc.).  The reader infers
+    ``n_atoms`` from the file itself.
+    """
+
+    try:
+        import MDAnalysis as mda
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise ModuleNotFoundError("MDAnalysis is required to read native trajectory formats") from exc
+
+    u = mda.Universe(str(path))
+    frames = np.array([ts.positions.copy() for ts in u.trajectory], dtype=np.float32)
+    if frames.ndim != 3:
+        raise ValueError(f"Expected 3-D frames array from {path}, got shape {frames.shape}")
+    return frames
+
+
 def wrap_frames_pbc(frames: np.ndarray, topology_info: dict[str, object]) -> np.ndarray:
     """Wrap whole molecules into an orthorhombic AMBER box when available."""
 

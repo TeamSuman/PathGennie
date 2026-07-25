@@ -227,6 +227,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         # ("auto" sizes from cores + free GPU memory); `devices` picks the card.
         workers_per_device=pg_cfg.get("workers_per_device", pg_cfg.get("tau1_workers", 1)),
         device=(pg_cfg.get("devices") or [None])[0],
+        save_subframes=pg_cfg.get("save_subframes", False),
+        subframe_stride=pg_cfg.get("subframe_stride", 1),
     )
     downstream = pg_cfg.get("downstream")
     result = runner.run(
@@ -252,7 +254,10 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     # Physical time between saved frames: each saved cycle spans tau1 + tau2
     # integrator steps, and frames are kept every save_freq cycles.
     save_freq = int(pg_cfg.get("save_freq", 1))
-    trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    if pg_cfg.get("save_subframes", False):
+        trajectory_dt = pg_cfg.get("subframe_stride", 1) * timestep_ps
+    else:
+        trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
     write_trajectory(trajectory_path, topology_info, trajectory, dt=trajectory_dt)
     write_metrics_csv(metrics_path, metrics)
 

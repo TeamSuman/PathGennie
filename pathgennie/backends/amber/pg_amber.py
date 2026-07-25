@@ -154,6 +154,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         reject_worse_tau2=pg_cfg.get("reject_worse_tau2", False),
         reject_worse_anchor=pg_cfg.get("reject_worse_anchor", False),
         verbosity=pg_cfg.get("verbosity", 1),
+        save_subframes=pg_cfg.get("save_subframes", False),
+        subframe_stride=pg_cfg.get("subframe_stride", 1),
     )
 
     downstream = pg_cfg.get("downstream")
@@ -181,7 +183,10 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     # integrator steps, and frames are kept every save_freq cycles.
     timestep_ps = float(mdin_controls.get("dt", 0.002))
     save_freq = int(pg_cfg.get("save_freq", 10))
-    trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    if pg_cfg.get("save_subframes", False):
+        trajectory_dt = pg_cfg.get("subframe_stride", 1) * timestep_ps
+    else:
+        trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
     write_trajectory(trajectory_path, topology_info, traj, dt=trajectory_dt)
     write_metrics_csv(metrics_path, metrics)
 

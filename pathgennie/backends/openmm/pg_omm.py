@@ -44,6 +44,8 @@ class PathGennieMD:
         seed: Optional[int] = None,
         workers_per_device=1,
         device: Optional[int] = None,
+        save_subframes: bool = False,
+        subframe_stride: int = 1,
     ):
         if mode not in ("escape", "target"):
             raise ValueError("mode must be 'escape' or 'target'")
@@ -64,6 +66,8 @@ class PathGennieMD:
         self.seed = seed
         self.workers_per_device = workers_per_device
         self.device = device
+        self.save_subframes = bool(save_subframes)
+        self.subframe_stride = max(1, int(subframe_stride))
 
     def run(
         self,
@@ -114,6 +118,8 @@ class PathGennieMD:
             engine, progress, convergence,
             executor=executor,
             sigma=self.sigma, seed=self.seed, verbosity=verbosity,
+            save_subframes=self.save_subframes,
+            subframe_stride=self.subframe_stride,
         )
         return driver.run(
             initial_handle,

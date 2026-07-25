@@ -75,6 +75,14 @@ class PathGennieConfig(BaseModel):
     checkpoint_path: Optional[str] = Field(None, description="Stream frames/metrics to this HDF5 file")
     verbosity: Optional[int] = Field(None, ge=0, description="0 = silent, 1 = per-save logging")
 
+    # Intra-segment frame capture (Phase 2).
+    save_subframes: Optional[bool] = Field(
+        None, description="Capture intra-segment frames for the chosen walker"
+    )
+    subframe_stride: Optional[int] = Field(
+        None, gt=0, description="Save a subframe every N integrator steps within each segment"
+    )
+
 
 class AppConfig(BaseModel):
     """Top-level ``input.yaml`` schema.

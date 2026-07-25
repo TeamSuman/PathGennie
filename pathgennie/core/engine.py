@@ -43,13 +43,20 @@ class Engine(Protocol):
         randomize_velocities: bool,
         seed: int,
         device: Optional[int] = None,
-    ) -> Handle:
+        save_subframes: bool = False,
+        subframe_stride: int = 1,
+    ) -> "Handle | tuple[Handle, np.ndarray]":
         """Propagate ``handle`` for ``n_steps`` and return the resulting handle.
 
         ``randomize_velocities`` selects samplers (τ1, fresh Maxwell-Boltzmann
         velocities) vs runners (τ2, continued velocities).  ``seed`` makes the
         segment reproducible; ``device`` is the GPU index when a device pool is
         in use (``None`` lets the engine choose).
+
+        When ``save_subframes`` is True, intermediate positions are captured
+        every ``subframe_stride`` integrator steps and the return changes to
+        ``(Handle, subframes)`` where ``subframes`` is an
+        ``(n_subframes, n_atoms, 3)`` array in Ångström.
         """
         ...
 

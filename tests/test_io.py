@@ -5,6 +5,7 @@ import numpy as np
 
 from pathgennie.backends.amber.utils import (
     parse_prmtop,
+    read_native_trajectory,
     read_rst7_coords,
     wrap_frames_pbc,
     write_multimodel_pdb,
@@ -105,3 +106,21 @@ def test_write_trajectory_dt_none_still_works(tmp_path):
     u = mda.Universe.empty(n_atoms, trajectory=True)
     u.load_new(str(out))
     assert u.trajectory.n_frames == n_frames
+
+
+def test_read_native_trajectory_roundtrip(tmp_path):
+    """Write frames with write_native_trajectory, read back with
+    read_native_trajectory, and verify shape and values match."""
+    mda = pytest.importorskip("MDAnalysis")
+
+    n_atoms, n_frames = 10, 5
+    rng = np.random.default_rng(42)
+    frames = rng.standard_normal((n_frames, n_atoms, 3)).astype(np.float32)
+    info = {"box_lengths": None}
+    out = tmp_path / "roundtrip.xtc"
+
+    write_native_trajectory(out, info, frames, dt=2.0)
+    read_back = read_native_trajectory(out)
+
+    assert read_back.shape == frames.shape
+    np.testing.assert_allclose(read_back, frames, atol=1e-2)

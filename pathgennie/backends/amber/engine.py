@@ -30,7 +30,7 @@ import numpy as np
 
 from pathgennie.core.parallel import resolve_cuda_visible_device
 
-from .utils import read_rst7_coords, write_mdin
+from .utils import read_native_trajectory, read_rst7_coords, write_mdin
 
 __all__ = ["CoreAmberEngine"]
 
@@ -77,16 +77,24 @@ class CoreAmberEngine:
         dst.write_bytes(src.read_bytes())
         return str(dst)
 
-    def run_segment(self, handle, n_steps, *, randomize_velocities, seed, device=None):
+    def run_segment(self, handle, n_steps, *, randomize_velocities, seed, device=None,
+                    save_subframes=False, subframe_stride=1):
         workdir = self._device_dir(device)
         stem = f"seg_{self._uid()}"
         mdin = workdir / f"{stem}.mdin"
         out_rst = workdir / f"{stem}.rst7"
+        traj_nc = workdir / f"{stem}.nc"
+
+        # Build mdin controls, overriding ntwx when subframes are requested.
+        seg_controls = dict(self.mdin_controls)
+        if save_subframes:
+            seg_controls["ntwx"] = int(subframe_stride)
+
         write_mdin(
             mdin,
             int(n_steps),
             self.temperature,
-            self.mdin_controls,
+            seg_controls,
             continue_velocities=not randomize_velocities,
             random_seed=int(seed),
             extra_text=self.extra_mdin_text,
@@ -100,8 +108,8 @@ class CoreAmberEngine:
             "-o", str(workdir / f"{stem}.out"),
             "-inf", str(workdir / f"{stem}.mdinfo"),
         ]
-        if self.mdin_controls.get("ntwx", 0):
-            cmd.extend(["-x", str(workdir / f"{stem}.nc")])
+        if seg_controls.get("ntwx", 0):
+            cmd.extend(["-x", str(traj_nc)])
 
         env = os.environ.copy()
         visible = resolve_cuda_visible_device(device, os.environ)
@@ -121,7 +129,12 @@ class CoreAmberEngine:
             if exc.stderr:
                 message.append("stderr:\n" + exc.stderr[-4000:])
             raise RuntimeError("\n".join(message)) from exc
-        return str(out_rst)
+
+        result_handle = str(out_rst)
+        if save_subframes and traj_nc.exists():
+            subframes = read_native_trajectory(traj_nc)
+            return result_handle, subframes
+        return result_handle
 
     def get_coords(self, handle):
         coords = read_rst7_coords(handle)

@@ -24,6 +24,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from pathgennie.backends.amber.utils import read_native_trajectory
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_device
 from pathgennie.core.progress import EscapeMetric, TargetMetric
@@ -185,7 +186,8 @@ class CoreGromacsEngine:
             dst_gro.with_suffix(".cpt").write_bytes(src_cpt.read_bytes())
         return str(dst_gro)
 
-    def run_segment(self, handle: str, n_steps: int, *, randomize_velocities: bool, seed: int, device: int | None = None) -> str:
+    def run_segment(self, handle: str, n_steps: int, *, randomize_velocities: bool, seed: int, device: int | None = None,
+                    save_subframes: bool = False, subframe_stride: int = 1) -> "str | tuple[str, np.ndarray]":
         is_tau2 = not randomize_velocities
         workdir = self._device_dir(device)
         stem = f"seg_{self._uid()}"
@@ -197,8 +199,13 @@ class CoreGromacsEngine:
         out_gro = prefix.with_suffix(".gro")
         out_cpt = prefix.with_suffix(".cpt")
 
+        # Build MDP controls, overriding nstxout-compressed when subframes are requested.
+        seg_controls = dict(self.mdp_controls)
+        if save_subframes:
+            seg_controls["nstxout-compressed"] = int(subframe_stride)
+
         write_mdp(
-            mdp, int(n_steps), self.temperature, self.mdp_controls,
+            mdp, int(n_steps), self.temperature, seg_controls,
             generate_velocities=randomize_velocities, random_seed=int(seed),
         )
 
@@ -222,7 +229,14 @@ class CoreGromacsEngine:
             "-c", str(out_gro), "-cpo", str(out_cpt), *self.mdrun_args,
         ]
         self._run(mdrun_cmd, "mdrun", env)
-        return str(out_gro)
+
+        result_handle = str(out_gro)
+        if save_subframes:
+            traj_xtc = prefix.with_suffix(".xtc")
+            if traj_xtc.exists():
+                subframes = read_native_trajectory(traj_xtc)
+                return result_handle, subframes
+        return result_handle
 
     def get_coords(self, handle: str) -> np.ndarray:
         coords = read_gro_coords(handle)
@@ -377,6 +391,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         reject_worse_tau2=pg_cfg.get("reject_worse_tau2", False),
         reject_worse_anchor=pg_cfg.get("reject_worse_anchor", False),
         verbosity=pg_cfg.get("verbosity", 1),
+        save_subframes=pg_cfg.get("save_subframes", False),
+        subframe_stride=pg_cfg.get("subframe_stride", 1),
     )
 
     downstream = pg_cfg.get("downstream")
@@ -403,7 +419,10 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     # float() cast required: read_mdp() returns dict[str, str].
     timestep_ps = float(mdp_controls.get("dt", 0.002))
     save_freq = int(pg_cfg.get("save_freq", 10))
-    trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    if pg_cfg.get("save_subframes", False):
+        trajectory_dt = pg_cfg.get("subframe_stride", 1) * timestep_ps
+    else:
+        trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
     write_trajectory(trajectory_path, topology_info, traj, dt=trajectory_dt)
     write_metrics_csv(metrics_path, metrics)
 

@@ -71,15 +71,23 @@ class ToyLangevinEngine:
         randomize_velocities: bool = True,
         seed: int = 0,
         device: Optional[int] = None,
-    ) -> int:
+        save_subframes: bool = False,
+        subframe_stride: int = 1,
+    ) -> "int | tuple[int, np.ndarray]":
         rng = np.random.default_rng(seed)
         pos = self._cache[handle].copy()
         diffusion = self.kT / self.gamma
         noise_scale = np.sqrt(2.0 * diffusion * self.dt)
-        for _ in range(int(n_steps)):
+        subframes: list[np.ndarray] = []
+        for step in range(int(n_steps)):
             force = -wolfe_quapp_gradient(pos)
             pos = pos + (force / self.gamma) * self.dt + noise_scale * rng.standard_normal(2)
-        return self._store(pos)
+            if save_subframes and (step + 1) % subframe_stride == 0:
+                subframes.append(np.array([[pos[0], pos[1], 0.0]], dtype=float))
+        result_handle = self._store(pos)
+        if save_subframes:
+            return result_handle, np.array(subframes) if subframes else np.empty((0, 1, 3), dtype=float)
+        return result_handle
 
     def get_coords(self, handle: int) -> np.ndarray:
         pos = self._cache[handle]

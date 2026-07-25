@@ -60,6 +60,8 @@ class PathGennieDriver:
         reject_worse_tau2: bool = False,
         reject_worse_anchor: bool = False,
         verbosity: int = 1,
+        save_subframes: bool = False,
+        subframe_stride: int = 1,
     ):
         self.engine = engine
         self.progress = progress
@@ -70,6 +72,8 @@ class PathGennieDriver:
         self.reject_worse_tau2 = bool(reject_worse_tau2)
         self.reject_worse_anchor = bool(reject_worse_anchor)
         self.verbosity = int(verbosity)
+        self.save_subframes = bool(save_subframes)
+        self.subframe_stride = max(1, int(subframe_stride))
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -161,9 +165,10 @@ class PathGennieDriver:
             tau2_device = getattr(chosen, "device", None)
             if tau2_device is None:
                 tau2_device = self.executor.devices[0]
+            tau2_seed = self._seed()
             tau2_handle = self.engine.run_segment(
                 chosen.handle, tau2, randomize_velocities=False,
-                seed=self._seed(), device=tau2_device,
+                seed=tau2_seed, device=tau2_device,
             )
             tau2_coords = self.engine.get_coords(tau2_handle)
             tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
@@ -195,8 +200,13 @@ class PathGennieDriver:
             for index, trial in enumerate(trials):
                 if trial.handle != new_anchor and not (index == chosen_idx and cand_handle == chosen.handle):
                     self.engine.release(trial.handle)
-            if new_anchor != previous_anchor and previous_anchor != initial_handle:
-                self.engine.release(previous_anchor)
+
+            # When subframes are requested for a save-cycle, we need
+            # previous_anchor alive for the replay, so defer its release.
+            need_replay = (self.save_subframes and cycle % save_freq == 0)
+            if not need_replay:
+                if new_anchor != previous_anchor and previous_anchor != initial_handle:
+                    self.engine.release(previous_anchor)
 
             anchor, anchor_coords, anchor_cv, anchor_metric = new_anchor, coords, cv, metric
             metric_history.append(metric)
@@ -209,7 +219,42 @@ class PathGennieDriver:
                 observe(coords, cycle)
 
             if cycle % save_freq == 0:
-                save_frame(coords, anchor, metric)
+                # ---- intra-segment subframe capture ----
+                if self.save_subframes:
+                    # Re-run the winning trial's tau1 with subframe capture.
+                    replay_handle = self.engine.clone_anchor(previous_anchor)
+
+                    # Now safe to release previous_anchor.
+                    if new_anchor != previous_anchor and previous_anchor != initial_handle:
+                        self.engine.release(previous_anchor)
+
+                    tau1_result = self.engine.run_segment(
+                        replay_handle, tau1, randomize_velocities=True,
+                        seed=cycle_seeds[chosen_idx], device=tau2_device,
+                        save_subframes=True, subframe_stride=self.subframe_stride,
+                    )
+                    tau1_replay_handle, tau1_subframes = tau1_result
+
+                    # Re-run tau2 from the replayed tau1 endpoint.
+                    tau2_result = self.engine.run_segment(
+                        tau1_replay_handle, tau2, randomize_velocities=False,
+                        seed=tau2_seed, device=tau2_device,
+                        save_subframes=True, subframe_stride=self.subframe_stride,
+                    )
+                    tau2_replay_handle, tau2_subframes = tau2_result
+
+                    # Concatenate tau1 + tau2 subframes into trajectory.
+                    all_subframes = np.concatenate([tau1_subframes, tau2_subframes], axis=0)
+                    for frame in all_subframes:
+                        trajectory.append(frame.copy())
+
+                    # Clean up replay handles.
+                    self.engine.release(replay_handle)
+                    self.engine.release(tau1_replay_handle)
+                    self.engine.release(tau2_replay_handle)
+                else:
+                    save_frame(coords, anchor, metric)
+
                 last_saved_cycle = cycle
                 if self.verbosity:
                     print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")

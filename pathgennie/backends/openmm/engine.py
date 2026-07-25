@@ -223,27 +223,44 @@ class OpenMMEngine:
         randomize_velocities: bool,
         seed: int,
         device: Optional[int] = None,
-    ) -> Handle:
+        save_subframes: bool = False,
+        subframe_stride: int = 1,
+    ) -> "Handle | tuple[Handle, np.ndarray]":
         assert isinstance(handle, int)
         with self._lock:
             state = self._cache[handle]
-        # Borrow a Context for the duration of this segment; no other thread can
-        # touch it while we hold it, so stepping is safe.
         ctx = self._pool.get()
         try:
             ctx.setState(state)
             integrator = ctx.getIntegrator()
             try:
                 integrator.setRandomNumberSeed(int(seed))
-            except AttributeError:  # integrator without an RNG (e.g. Verlet)
+            except AttributeError:
                 pass
             if randomize_velocities:
                 ctx.setVelocitiesToTemperature(self.temperature, int(seed))
-            integrator.step(int(n_steps))
-            new_state = ctx.getState(getPositions=True, getVelocities=True)
+
+            if save_subframes:
+                subframes: list[np.ndarray] = []
+                remaining = int(n_steps)
+                while remaining > 0:
+                    chunk = min(subframe_stride, remaining)
+                    integrator.step(chunk)
+                    remaining -= chunk
+                    snap = ctx.getState(getPositions=True)
+                    pos = snap.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
+                    subframes.append(np.asarray(pos, dtype=float) * NM_TO_ANG)
+                new_state = ctx.getState(getPositions=True, getVelocities=True)
+            else:
+                integrator.step(int(n_steps))
+                new_state = ctx.getState(getPositions=True, getVelocities=True)
         finally:
             self._pool.put(ctx)
-        return self._store(new_state)
+
+        result_handle = self._store(new_state)
+        if save_subframes:
+            return result_handle, np.array(subframes, dtype=np.float32)
+        return result_handle
 
     def get_coords(self, handle: Handle) -> np.ndarray:
         assert isinstance(handle, int)
