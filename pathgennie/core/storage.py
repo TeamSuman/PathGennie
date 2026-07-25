@@ -116,9 +116,7 @@ class HDF5Storage:
             # Scalar / small metadata.
             grp.attrs["cycle"] = int(cycle)
             grp.attrs["anchor_metric"] = float(anchor_metric)
-            grp.attrs["rng_state_json"] = json.dumps(
-                _rng_state_to_serialisable(rng_state)
-            )
+            grp.attrs["rng_state_json"] = json.dumps(_rng_state_to_serialisable(rng_state))
             # Arrays (overwrite on every checkpoint).
             datasets_to_save = [
                 ("anchor_coords", anchor_coords),
@@ -173,12 +171,14 @@ class HDF5Storage:
 
 
 # -- numpy RNG state serialisation helpers ------------------------------------
-# numpy's Generator.__getstate__() returns a dict whose values include ndarrays,
-# which json.dumps cannot handle directly.  We convert arrays to lists for JSON
-# storage and restore on load.
+# numpy's public Generator state is exposed through ``bit_generator.state``.
+# Some NumPy versions return ``None`` from Generator.__getstate__(), so callers
+# should avoid that private pickle hook when storing restart metadata.
 
 def _rng_state_to_serialisable(state: dict) -> dict:
     """Convert numpy RNG state dict to JSON-safe nested dicts/lists."""
+    if state is None:
+        raise ValueError("rng_state cannot be None; use rng.bit_generator.state")
     out: dict = {}
     for key, val in state.items():
         if isinstance(val, np.ndarray):

@@ -57,7 +57,7 @@ def test_checkpoint_metadata_roundtrip(tmp_path):
 
     rng = np.random.default_rng(12345)
     _ = rng.standard_normal(5)
-    rng_state = rng.__getstate__()
+    rng_state = rng.bit_generator.state
     coords = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     cv = np.array([0.5, 0.8])
     metric = -1.25
@@ -82,6 +82,5 @@ def test_checkpoint_metadata_roundtrip(tmp_path):
 
     # Verify RNG state can be restored and produces identical next numbers
     restored_rng = np.random.default_rng()
-    restored_rng.__setstate__(ckpt["rng_state"])
+    restored_rng.bit_generator.state = ckpt["rng_state"]
     np.testing.assert_allclose(rng.standard_normal(5), restored_rng.standard_normal(5))
-

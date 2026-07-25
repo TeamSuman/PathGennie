@@ -122,7 +122,7 @@ class PathGennieDriver:
             ckpt = HDF5Storage.load_checkpoint(checkpoint_path)
             if ckpt is not None:
                 start_cycle = ckpt["cycle"] + 1
-                self.rng.__setstate__(ckpt["rng_state"])
+                self.rng.bit_generator.state = ckpt["rng_state"]
                 anchor_coords = ckpt["anchor_coords"]
                 anchor_cv = ckpt["anchor_cv"]
                 anchor_metric = float(ckpt["anchor_metric"])
@@ -297,7 +297,7 @@ class PathGennieDriver:
             if ckpt_freq > 0 and cycle % ckpt_freq == 0 and storage is not None:
                 storage.save_checkpoint(
                     cycle=cycle,
-                    rng_state=self.rng.__getstate__(),
+                    rng_state=self.rng.bit_generator.state,
                     anchor_coords=anchor_coords,
                     anchor_cv=anchor_cv,
                     anchor_metric=anchor_metric,
