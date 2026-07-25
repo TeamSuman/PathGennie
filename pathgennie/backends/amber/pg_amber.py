@@ -177,7 +177,12 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
     if cfg.get("output", {}).get("wrap_pbc", False):
         traj = wrap_frames_pbc(traj, topology_info)
-    write_trajectory(trajectory_path, topology_info, traj)
+    # Physical time between saved frames: each saved cycle spans tau1 + tau2
+    # integrator steps, and frames are kept every save_freq cycles.
+    timestep_ps = float(mdin_controls.get("dt", 0.002))
+    save_freq = int(pg_cfg.get("save_freq", 10))
+    trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    write_trajectory(trajectory_path, topology_info, traj, dt=trajectory_dt)
     write_metrics_csv(metrics_path, metrics)
 
     # Optional downstream enhanced-sampling stage (uses scratch, so before cleanup).

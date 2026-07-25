@@ -238,8 +238,20 @@ def write_multimodel_pdb(path: Path, topology_info: dict[str, object], frames: n
         handle.write("END\n")
 
 
-def write_native_trajectory(path: Path, topology_info: dict[str, object], frames: np.ndarray) -> None:
-    """Write a binary trajectory selected by file extension using MDAnalysis."""
+def write_native_trajectory(
+    path: Path, topology_info: dict[str, object], frames: np.ndarray, *, dt: float | None = None,
+) -> None:
+    """Write a binary trajectory selected by file extension using MDAnalysis.
+
+    Parameters
+    ----------
+    dt : float, optional
+        Time between saved frames in picoseconds.  When provided, the writer
+        header (DCD) and per-frame timestamps (XTC/NetCDF) are set so that
+        downstream tools see the correct physical time instead of a default
+        iteration index.  Note: the last frame of a PathGennie run may be
+        closer in time than *dt* if convergence triggered mid-interval.
+    """
 
     try:
         import MDAnalysis as mda
@@ -263,10 +275,16 @@ def write_native_trajectory(path: Path, topology_info: dict[str, object], frames
         if box.shape == (3,) and np.all(box > 0.0):
             dimensions = np.array([box[0], box[1], box[2], 90.0, 90.0, 90.0], dtype=np.float32)
 
-    writer = core.writer(str(path), n_atoms=n_atoms)
+    writer_kwargs: dict = {"n_atoms": n_atoms}
+    if dt is not None:
+        writer_kwargs["dt"] = dt
+    writer = core.writer(str(path), **writer_kwargs)
     try:
-        for frame in frames:
+        for i, frame in enumerate(frames):
             universe.atoms.positions = frame  # type: ignore
+            universe.trajectory.ts.frame = i
+            if dt is not None:
+                universe.trajectory.ts.time = i * dt
             if dimensions is not None:
                 universe.dimensions = dimensions
             writer.write(universe.atoms)
@@ -274,13 +292,20 @@ def write_native_trajectory(path: Path, topology_info: dict[str, object], frames
         writer.close()
 
 
-def write_trajectory(path: Path, topology_info: dict[str, object], frames: np.ndarray) -> None:
-    """Write PDB or a native trajectory based on the output extension."""
+def write_trajectory(
+    path: Path, topology_info: dict[str, object], frames: np.ndarray, *, dt: float | None = None,
+) -> None:
+    """Write PDB or a native trajectory based on the output extension.
+
+    *dt* (picoseconds between saved frames) is forwarded to
+    :func:`write_native_trajectory` for binary formats.  PDB MODEL records
+    have no standard per-frame time field, so *dt* is a no-op for ``.pdb``.
+    """
 
     if path.suffix.lower() == ".pdb":
         write_multimodel_pdb(path, topology_info, frames)
     else:
-        write_native_trajectory(path, topology_info, frames)
+        write_native_trajectory(path, topology_info, frames, dt=dt)
 
 
 def wrap_frames_pbc(frames: np.ndarray, topology_info: dict[str, object]) -> np.ndarray:

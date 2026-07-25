@@ -177,11 +177,12 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         else:
             raise FileNotFoundError(f"Custom system file not found: {system_file_path}")
     else:
+        timestep_ps = float(md_cfg.get("timestep_ps", 0.001))
         simulation = build_simulation(
             topology,
             initial_restart,
             temperature=temperature,
-            timestep_ps=float(md_cfg.get("timestep_ps", 0.001)),
+            timestep_ps=timestep_ps,
             friction_per_ps=float(md_cfg.get("friction_per_ps", 1.0)),
             platform_name=openmm_cfg.get("platform", "CPU"),
             plumed_file=md_cfg.get("plumed_file", None),
@@ -248,7 +249,11 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
     if cfg.get("output", {}).get("wrap_pbc", False):
         trajectory = wrap_frames_pbc(trajectory, topology_info)
-    write_trajectory(trajectory_path, topology_info, trajectory)
+    # Physical time between saved frames: each saved cycle spans tau1 + tau2
+    # integrator steps, and frames are kept every save_freq cycles.
+    save_freq = int(pg_cfg.get("save_freq", 1))
+    trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    write_trajectory(trajectory_path, topology_info, trajectory, dt=trajectory_dt)
     write_metrics_csv(metrics_path, metrics)
 
     if downstream:
