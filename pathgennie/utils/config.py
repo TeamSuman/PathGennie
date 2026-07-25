@@ -83,6 +83,18 @@ class PathGennieConfig(BaseModel):
         None, gt=0, description="Save a subframe every N integrator steps within each segment"
     )
 
+    # Checkpoint / restart.
+    checkpoint_freq: Optional[int] = Field(
+        None, ge=0,
+        description="Save a full restart checkpoint every N cycles (0 = disabled). "
+                    "Typically much larger than save_freq."
+    )
+    overwrite: Optional[bool] = Field(
+        None,
+        description="Allow overwriting existing output files. "
+                    "Default is False — raises FileExistsError if outputs exist."
+    )
+
 
 class AppConfig(BaseModel):
     """Top-level ``input.yaml`` schema.

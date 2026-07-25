@@ -86,3 +86,119 @@ class HDF5Storage:
         self._stop_event.set()
         self._thread.join()
         self._raise_if_failed()
+
+    # -- checkpoint save / load -----------------------------------------------
+
+    def save_checkpoint(
+        self,
+        cycle: int,
+        rng_state: dict,
+        anchor_coords: np.ndarray,
+        anchor_cv: np.ndarray,
+        anchor_metric: float,
+        metric_history: Optional[List[float] | np.ndarray] = None,
+    ) -> None:
+        """Flush pending writes then synchronously save restart metadata.
+
+        This blocks the caller (main thread) while the writer thread drains its
+        queue, then writes the checkpoint group directly.  The brief pause is
+        acceptable because checkpoints are infrequent (every ``checkpoint_freq``
+        cycles, typically much larger than ``save_freq``).
+        """
+        import json
+
+        # Drain the async writer queue so trajectory/metric datasets are current.
+        self._queue.join()
+        self._raise_if_failed()
+
+        with h5py.File(self.filepath, "a") as f:
+            grp = f.require_group("checkpoint")
+            # Scalar / small metadata.
+            grp.attrs["cycle"] = int(cycle)
+            grp.attrs["anchor_metric"] = float(anchor_metric)
+            grp.attrs["rng_state_json"] = json.dumps(
+                _rng_state_to_serialisable(rng_state)
+            )
+            # Arrays (overwrite on every checkpoint).
+            datasets_to_save = [
+                ("anchor_coords", anchor_coords),
+                ("anchor_cv", anchor_cv),
+            ]
+            if metric_history is not None:
+                datasets_to_save.append(("metric_history", np.asarray(metric_history)))
+
+            for name, arr in datasets_to_save:
+                if name in grp:
+                    del grp[name]
+                grp.create_dataset(name, data=np.asarray(arr))
+
+    @classmethod
+    def load_checkpoint(cls, filepath: Path | str) -> "dict | None":
+        """Load the last saved checkpoint from *filepath*, or ``None``.
+
+        Returns a dict with keys: ``cycle``, ``rng_state``, ``anchor_coords``,
+        ``anchor_cv``, ``anchor_metric``, ``trajectory``, ``metric_history``.
+        """
+        import json
+
+        filepath = Path(filepath)
+        if not filepath.exists():
+            return None
+        with h5py.File(filepath, "r") as f:
+            if "checkpoint" not in f:
+                return None
+            grp = f["checkpoint"]
+            result: dict = {
+                "cycle": int(grp.attrs["cycle"]),
+                "anchor_metric": float(grp.attrs["anchor_metric"]),
+                "rng_state": _rng_state_from_serialised(
+                    json.loads(grp.attrs["rng_state_json"])
+                ),
+                "anchor_coords": np.array(grp["anchor_coords"]),
+                "anchor_cv": np.array(grp["anchor_cv"]),
+            }
+            if "metric_history" in grp:
+                result["metric_history"] = np.array(grp["metric_history"]).reshape(-1)
+            elif "metric" in f:
+                result["metric_history"] = np.array(f["metric"]).reshape(-1)
+            else:
+                result["metric_history"] = np.empty((0,), dtype=float)
+
+            # Also load the accumulated streaming trajectory data.
+            if "trajectory" in f:
+                result["trajectory"] = np.array(f["trajectory"])
+            else:
+                result["trajectory"] = np.empty((0,), dtype=np.float32)
+        return result
+
+
+# -- numpy RNG state serialisation helpers ------------------------------------
+# numpy's Generator.__getstate__() returns a dict whose values include ndarrays,
+# which json.dumps cannot handle directly.  We convert arrays to lists for JSON
+# storage and restore on load.
+
+def _rng_state_to_serialisable(state: dict) -> dict:
+    """Convert numpy RNG state dict to JSON-safe nested dicts/lists."""
+    out: dict = {}
+    for key, val in state.items():
+        if isinstance(val, np.ndarray):
+            out[key] = {"__ndarray__": True, "data": val.tolist(), "dtype": str(val.dtype)}
+        elif isinstance(val, dict):
+            out[key] = _rng_state_to_serialisable(val)
+        else:
+            # int, str, bool, etc.
+            out[key] = val
+    return out
+
+
+def _rng_state_from_serialised(obj: dict) -> dict:
+    """Restore a numpy RNG state dict from its JSON-safe representation."""
+    out: dict = {}
+    for key, val in obj.items():
+        if isinstance(val, dict) and val.get("__ndarray__"):
+            out[key] = np.array(val["data"], dtype=val["dtype"])
+        elif isinstance(val, dict):
+            out[key] = _rng_state_from_serialised(val)
+        else:
+            out[key] = val
+    return out

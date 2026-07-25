@@ -62,6 +62,7 @@ class PathGennieDriver:
         verbosity: int = 1,
         save_subframes: bool = False,
         subframe_stride: int = 1,
+        checkpoint_freq: int = 0,
     ):
         self.engine = engine
         self.progress = progress
@@ -74,6 +75,7 @@ class PathGennieDriver:
         self.verbosity = int(verbosity)
         self.save_subframes = bool(save_subframes)
         self.subframe_stride = max(1, int(subframe_stride))
+        self.checkpoint_freq = max(0, int(checkpoint_freq))
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -93,6 +95,7 @@ class PathGennieDriver:
         save_freq: int = 10,
         collect_seeds: bool = False,
         checkpoint_path: Optional[str] = None,
+        checkpoint_freq: Optional[int] = None,
     ):
         """Run the adaptive cycle and return ``(trajectory, metrics)`` arrays.
 
@@ -106,10 +109,8 @@ class PathGennieDriver:
         (e.g. Weighted Ensemble). Default behaviour and the 2-tuple return are
         unchanged.
         """
-
-        anchor = initial_handle
-        anchor_coords = self.engine.get_coords(anchor)
-        anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
+        ckpt_freq = self.checkpoint_freq if checkpoint_freq is None else max(0, int(checkpoint_freq))
+        start_cycle = 0
 
         trajectory: List[np.ndarray] = []
         metric_history: List[float] = []
@@ -118,8 +119,29 @@ class PathGennieDriver:
 
         if checkpoint_path is not None:
             from .storage import HDF5Storage
+            ckpt = HDF5Storage.load_checkpoint(checkpoint_path)
+            if ckpt is not None:
+                start_cycle = ckpt["cycle"] + 1
+                self.rng.__setstate__(ckpt["rng_state"])
+                anchor_coords = ckpt["anchor_coords"]
+                anchor_cv = ckpt["anchor_cv"]
+                anchor_metric = float(ckpt["anchor_metric"])
+                anchor = self.engine.create_handle(anchor_coords)
+                if len(ckpt["trajectory"]) > 0:
+                    trajectory = list(ckpt["trajectory"])
+                if len(ckpt["metric_history"]) > 0:
+                    metric_history = list(ckpt["metric_history"])
+                if self.verbosity:
+                    print(f"Resuming from checkpoint at cycle {start_cycle} (loaded {len(trajectory)} frames)")
+            else:
+                anchor = initial_handle
+                anchor_coords = self.engine.get_coords(anchor)
+                anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
             storage = HDF5Storage(checkpoint_path)
         else:
+            anchor = initial_handle
+            anchor_coords = self.engine.get_coords(anchor)
+            anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
             storage = None
 
         def save_frame(coords: np.ndarray, handle: Handle, metric_val: float) -> None:
@@ -148,7 +170,7 @@ class PathGennieDriver:
             return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords, device=device)
 
         converged_at: Optional[int] = None
-        for cycle in range(max_cycle):
+        for cycle in range(start_cycle, max_cycle):
             previous_anchor = anchor
 
             # Draw all per-trial seeds up front on the main thread so the
@@ -258,6 +280,16 @@ class PathGennieDriver:
                 last_saved_cycle = cycle
                 if self.verbosity:
                     print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")
+
+            if ckpt_freq > 0 and cycle % ckpt_freq == 0 and storage is not None:
+                storage.save_checkpoint(
+                    cycle=cycle,
+                    rng_state=self.rng.__getstate__(),
+                    anchor_coords=anchor_coords,
+                    anchor_cv=anchor_cv,
+                    anchor_metric=anchor_metric,
+                    metric_history=metric_history,
+                )
 
             if self.convergence_fn(coords):
                 converged_at = cycle

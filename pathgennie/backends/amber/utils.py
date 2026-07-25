@@ -57,6 +57,29 @@ def read_rst7_coords(path: str | Path) -> np.ndarray:
     return np.asarray(values[: natom * 3], dtype=float).reshape(natom, 3)
 
 
+def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
+    """Write a minimal AMBER rst7 restart file from ``(n_atoms, 3)`` coordinates.
+
+    Velocities are set to zero; the file uses the standard Amber restart
+    format (12.7f, 6 values per line).  This is intended for checkpoint
+    restart — the next cycle's tau1 will randomize velocities anyway.
+    """
+    coords = np.asarray(coords, dtype=float).reshape(-1, 3)
+    natom = coords.shape[0]
+    flat = coords.ravel()
+    lines = [f"Checkpoint restart", f"{natom:5d}"]
+    row: list[str] = []
+    for val in flat:
+        row.append(f"{val:12.7f}")
+        if len(row) == 6:
+            lines.append("".join(row))
+            row = []
+    if row:
+        lines.append("".join(row))
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+
 def read_prmtop_flag(path: Path, flag: str) -> list[str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):

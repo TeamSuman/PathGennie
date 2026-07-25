@@ -45,3 +45,43 @@ def test_pathrefinement_base_import_without_optional_deps():
     if importlib.util.find_spec("torch") is None:
         with pytest.raises(ImportError):
             _ = pathrefinement.PathRefiner
+
+
+def test_checkpoint_metadata_roundtrip(tmp_path):
+    path = tmp_path / "ckpt.h5"
+    store = HDF5Storage(path)
+
+    # Append streaming data
+    store.append("trajectory", np.ones((2, 3)))
+    store.append("metric", np.array([1.5]))
+
+    rng = np.random.default_rng(12345)
+    _ = rng.standard_normal(5)
+    rng_state = rng.__getstate__()
+    coords = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    cv = np.array([0.5, 0.8])
+    metric = -1.25
+
+    store.save_checkpoint(
+        cycle=10,
+        rng_state=rng_state,
+        anchor_coords=coords,
+        anchor_cv=cv,
+        anchor_metric=metric,
+    )
+    store.close()
+
+    ckpt = HDF5Storage.load_checkpoint(path)
+    assert ckpt is not None
+    assert ckpt["cycle"] == 10
+    assert ckpt["anchor_metric"] == pytest.approx(-1.25)
+    np.testing.assert_allclose(ckpt["anchor_coords"], coords)
+    np.testing.assert_allclose(ckpt["anchor_cv"], cv)
+    assert ckpt["trajectory"].shape == (1, 2, 3)
+    assert len(ckpt["metric_history"]) == 1
+
+    # Verify RNG state can be restored and produces identical next numbers
+    restored_rng = np.random.default_rng()
+    restored_rng.__setstate__(ckpt["rng_state"])
+    np.testing.assert_allclose(rng.standard_normal(5), restored_rng.standard_normal(5))
+

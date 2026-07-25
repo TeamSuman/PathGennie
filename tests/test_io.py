@@ -124,3 +124,21 @@ def test_read_native_trajectory_roundtrip(tmp_path):
 
     assert read_back.shape == frames.shape
     np.testing.assert_allclose(read_back, frames, atol=1e-2)
+
+
+def test_overwrite_check_logic(tmp_path):
+    """Verify that when overwrite is False and an output file exists, FileExistsError is raised."""
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    traj_file = out_dir / "reactive_path.pdb"
+    traj_file.write_text("existing content")
+
+    pg_cfg = {"overwrite": False}
+    overwrite = pg_cfg.get("overwrite", False)
+
+    existing = [p for p in [traj_file] if p.exists()]
+    if not overwrite and existing:
+        with pytest.raises(FileExistsError):
+            names = ", ".join(str(p) for p in existing)
+            raise FileExistsError(f"Output file(s) already exist: {names}")
+

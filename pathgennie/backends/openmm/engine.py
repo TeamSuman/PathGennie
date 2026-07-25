@@ -276,3 +276,15 @@ class OpenMMEngine:
         assert isinstance(handle, int)
         with self._lock:
             self._cache.pop(handle, None)
+
+    def create_handle(self, coords: np.ndarray) -> int:
+        """Re-create a handle from an ``(n_atoms, 3)`` coordinate array (Å).
+
+        Used by checkpoint restart. Uses the primary context to build a State
+        with fresh Maxwell–Boltzmann velocities.
+        """
+        positions = (np.asarray(coords, dtype=float) / NM_TO_ANG) * unit.nanometers
+        ctx = self.sim.context
+        ctx.setPositions(positions)
+        ctx.setVelocitiesToTemperature(self.temperature)
+        return self._store(ctx.getState(getPositions=True, getVelocities=True))

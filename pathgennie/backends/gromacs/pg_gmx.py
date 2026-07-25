@@ -38,6 +38,7 @@ from .utils import (
     read_gro_coords,
     read_topology_info,
     resolve_case_path,
+    write_gro_coords,
     write_metrics_csv,
     write_trajectory,
 )
@@ -152,6 +153,7 @@ class CoreGromacsEngine:
         grompp_args: list[str] | None = None,
         mdrun_args: list[str] | None = None,
         env_overrides: Mapping[str, Any] | None = None,
+        template_gro: Path | str | None = None,
     ):
         self.topology = str(topology)
         self.exe = str(executable)
@@ -163,6 +165,7 @@ class CoreGromacsEngine:
         self.grompp_args = grompp_args or []
         self.mdrun_args = mdrun_args or []
         self.env_overrides = {str(k): str(v) for k, v in (env_overrides or {}).items()}
+        self.template_gro = str(template_gro) if template_gro else None
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -251,6 +254,15 @@ class CoreGromacsEngine:
                 sibling.unlink()
             except OSError:
                 pass
+
+    def create_handle(self, coords: np.ndarray) -> str:
+        """Write coordinates to a new .gro file and return its path."""
+        if self.template_gro is None:
+            raise RuntimeError("Cannot create handle from coords: no template_gro set on CoreGromacsEngine")
+        gro_path = self.scratch_dir / f"ckpt_{self._uid()}.gro"
+        write_gro_coords(self.template_gro, gro_path, coords)
+        return str(gro_path)
+
 
     def _run(self, cmd: list[str], stage: str, env: Mapping[str, str]) -> None:
         try:
@@ -377,11 +389,34 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         grompp_args=grompp_args,
         mdrun_args=mdrun_args,
         env_overrides=env_overrides,
+        template_gro=initial_structure,
     )
 
     devices = pg_cfg.get("devices", gmx_cfg.get("devices"))
     workers_per_device = int(pg_cfg.get("workers_per_device", pg_cfg.get("tau1_workers", 1)))
     executor = ThreadDevicePool(devices=devices, workers_per_device=workers_per_device)
+
+    trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.xtc")
+    metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
+    overwrite = pg_cfg.get("overwrite", False)
+    checkpoint_path = pg_cfg.get("checkpoint_path")
+
+    is_resuming = False
+    if checkpoint_path:
+        from pathgennie.core.storage import HDF5Storage
+        if HDF5Storage.load_checkpoint(checkpoint_path) is not None:
+            is_resuming = True
+
+    if not overwrite and not is_resuming:
+        existing = [p for p in [trajectory_path, metrics_path] if p.exists()]
+        if checkpoint_path and Path(checkpoint_path).exists():
+            existing.append(Path(checkpoint_path))
+        if existing:
+            names = ", ".join(str(p) for p in existing)
+            raise FileExistsError(
+                f"Output file(s) already exist: {names}. "
+                f"Set 'overwrite: true' in pathgennie config to overwrite, or remove existing files."
+            )
 
     driver = PathGennieDriver(
         engine, progress, convergence,
@@ -393,6 +428,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         verbosity=pg_cfg.get("verbosity", 1),
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
+        checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
     )
 
     downstream = pg_cfg.get("downstream")
@@ -404,16 +440,14 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         max_cycle=pg_cfg["max_cycle"],
         save_freq=pg_cfg.get("save_freq", 10),
         collect_seeds=bool(downstream),
-        checkpoint_path=pg_cfg.get("checkpoint_path"),
+        checkpoint_path=checkpoint_path,
+        checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
     )
     seed_handles = None
     if downstream:
         traj, metrics, seed_handles = result
     else:
         traj, metrics = result
-
-    trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.xtc")
-    metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
     # Physical time between saved frames: each saved cycle spans tau1 + tau2
     # integrator steps, and frames are kept every save_freq cycles.
     # float() cast required: read_mdp() returns dict[str, str].

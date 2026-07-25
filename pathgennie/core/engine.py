@@ -71,3 +71,12 @@ class Engine(Protocol):
         anchor handle (no-op) so the driver can release trials unconditionally.
         """
         ...
+
+    def create_handle(self, coords: np.ndarray) -> Handle:
+        """Create a new handle from raw coordinates (Ångström, ``(n_atoms, 3)``).
+
+        Used by checkpoint restart to re-create an anchor handle from the saved
+        coordinates.  Velocities do not need to be restored because the next
+        cycle always starts with ``randomize_velocities=True`` for τ1.
+        """
+        ...

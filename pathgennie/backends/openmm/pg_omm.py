@@ -46,6 +46,7 @@ class PathGennieMD:
         device: Optional[int] = None,
         save_subframes: bool = False,
         subframe_stride: int = 1,
+        checkpoint_freq: int = 0,
     ):
         if mode not in ("escape", "target"):
             raise ValueError("mode must be 'escape' or 'target'")
@@ -68,6 +69,7 @@ class PathGennieMD:
         self.device = device
         self.save_subframes = bool(save_subframes)
         self.subframe_stride = max(1, int(subframe_stride))
+        self.checkpoint_freq = max(0, int(checkpoint_freq))
 
     def run(
         self,
@@ -79,6 +81,8 @@ class PathGennieMD:
         save_freq: int = 10,
         verbosity: int = 1,
         collect_seeds: bool = False,
+        checkpoint_path: Optional[str] = None,
+        checkpoint_freq: Optional[int] = None,
     ):
         # Single-GPU saturation: build a pool of concurrent Contexts sized from
         # workers_per_device (an int, or "auto" -> cores capped by free GPU memory).
@@ -120,10 +124,13 @@ class PathGennieMD:
             sigma=self.sigma, seed=self.seed, verbosity=verbosity,
             save_subframes=self.save_subframes,
             subframe_stride=self.subframe_stride,
+            checkpoint_freq=self.checkpoint_freq if checkpoint_freq is None else checkpoint_freq,
         )
         return driver.run(
             initial_handle,
             tau1=tau1, tau2=tau2, max_trial=max_trial,
             max_cycle=max_cycle, save_freq=save_freq,
             collect_seeds=collect_seeds,
+            checkpoint_path=checkpoint_path,
+            checkpoint_freq=checkpoint_freq,
         )

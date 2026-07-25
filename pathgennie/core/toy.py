@@ -95,3 +95,8 @@ class ToyLangevinEngine:
 
     def release(self, handle: int) -> None:
         self._cache.pop(handle, None)
+
+    def create_handle(self, coords: np.ndarray) -> int:
+        """Re-create a handle from an ``(n_atoms, 3)`` coordinate array."""
+        pos = np.asarray(coords, dtype=float).reshape(-1, 3)[0, :2]
+        return self._store(pos)

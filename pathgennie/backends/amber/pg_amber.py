@@ -146,6 +146,28 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     workers_per_device = int(pg_cfg.get("workers_per_device", pg_cfg.get("tau1_workers", 1)))
     executor = ThreadDevicePool(devices=devices, workers_per_device=workers_per_device)
 
+    trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.pdb")
+    metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
+    overwrite = pg_cfg.get("overwrite", False)
+    checkpoint_path = pg_cfg.get("checkpoint_path")
+
+    is_resuming = False
+    if checkpoint_path:
+        from pathgennie.core.storage import HDF5Storage
+        if HDF5Storage.load_checkpoint(checkpoint_path) is not None:
+            is_resuming = True
+
+    if not overwrite and not is_resuming:
+        existing = [p for p in [trajectory_path, metrics_path] if p.exists()]
+        if checkpoint_path and Path(checkpoint_path).exists():
+            existing.append(Path(checkpoint_path))
+        if existing:
+            names = ", ".join(str(p) for p in existing)
+            raise FileExistsError(
+                f"Output file(s) already exist: {names}. "
+                f"Set 'overwrite: true' in pathgennie config to overwrite, or remove existing files."
+            )
+
     driver = PathGennieDriver(
         engine, progress, convergence,
         executor=executor,
@@ -156,6 +178,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         verbosity=pg_cfg.get("verbosity", 1),
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
+        checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
     )
 
     downstream = pg_cfg.get("downstream")
@@ -167,7 +190,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         max_cycle=pg_cfg["max_cycle"],
         save_freq=pg_cfg.get("save_freq", 10),
         collect_seeds=bool(downstream),
-        checkpoint_path=pg_cfg.get("checkpoint_path"),
+        checkpoint_path=checkpoint_path,
+        checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
     )
     seed_handles = None
     if downstream:
@@ -175,8 +199,6 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     else:
         traj, metrics = result
 
-    trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.pdb")
-    metrics_path = output_dir / cfg.get("output", {}).get("metrics", "metrics.csv")
     if cfg.get("output", {}).get("wrap_pbc", False):
         traj = wrap_frames_pbc(traj, topology_info)
     # Physical time between saved frames: each saved cycle spans tau1 + tau2

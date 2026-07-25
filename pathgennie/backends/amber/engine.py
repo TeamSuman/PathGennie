@@ -150,3 +150,16 @@ class CoreAmberEngine:
                 sibling.unlink()
             except OSError:
                 pass
+
+    def create_handle(self, coords: np.ndarray) -> str:
+        """Write coordinates to a new rst7 file and return its path.
+
+        The restart file has zero velocities; the next cycle's tau1 will
+        randomize them anyway.
+        """
+        from .utils import write_rst7_coords
+
+        coords = np.asarray(coords, dtype=float).reshape(-1, 3)
+        rst_path = self.scratch_dir / f"ckpt_{self._uid()}.rst7"
+        write_rst7_coords(rst_path, coords)
+        return str(rst_path)

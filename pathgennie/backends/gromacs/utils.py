@@ -70,6 +70,35 @@ def read_gro_coords(path: str | Path) -> np.ndarray:
     return np.asarray(coords, dtype=float)
 
 
+def write_gro_coords(template_gro: str | Path, out_gro: str | Path, coords: np.ndarray) -> None:
+    """Write a new .gro file using header/atom info from template_gro and updated coordinates (Ångström)."""
+    template_path = Path(template_gro)
+    lines = template_path.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 3:
+        raise ValueError(f"Invalid GRO file: {template_path}")
+
+    natom = int(lines[1].strip())
+    coords = np.asarray(coords, dtype=float).reshape(-1, 3)
+    if coords.shape[0] != natom:
+        raise ValueError(f"Coordinate count mismatch: expected {natom}, got {coords.shape[0]}")
+
+    out_lines = [lines[0], lines[1]]
+    for i, line in enumerate(lines[2 : 2 + natom]):
+        # gro format: positions in nm, formatted as %8.3f in columns 21-44 (1-indexed) -> [20:28], [28:36], [36:44]
+        prefix = line[:20]
+        suffix = line[44:] if len(line) > 44 else ""
+        x_nm, y_nm, z_nm = coords[i] / 10.0
+        pos_str = f"{x_nm:8.3f}{y_nm:8.3f}{z_nm:8.3f}"
+        out_lines.append(f"{prefix}{pos_str}{suffix}")
+
+    # Append box line if present
+    if len(lines) > 2 + natom:
+        out_lines.extend(lines[2 + natom :])
+
+    Path(out_gro).write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+
+
+
 def read_gro_topology_info(path: str | Path) -> dict[str, object]:
     path = Path(path)
     lines = path.read_text(encoding="utf-8").splitlines()

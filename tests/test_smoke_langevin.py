@@ -138,3 +138,44 @@ def test_subframes_off_matches_baseline():
     assert t1.shape == t2.shape
     np.testing.assert_allclose(t1, t2)
 
+
+def test_driver_checkpoint_resume(tmp_path):
+    """Running with checkpoint_freq saves periodic checkpoints, and a subsequent
+    run with the same checkpoint_path resumes from the saved cycle."""
+    ckpt_path = tmp_path / "checkpoint.h5"
+
+    engine = ToyLangevinEngine(dt=0.005, kT=1.0, gamma=1.0)
+    initial = engine.create_state(SOURCE)
+    progress = TargetMetric(_xy, target_cv=TARGET)
+
+    # Never converge early so loop runs full cycles
+    never_converge = lambda coords: False
+
+    # Part 1: Run 25 cycles with checkpoint_freq=10 (saves at cycles 0, 10, 20)
+    d1 = PathGennieDriver(
+        engine, progress, never_converge,
+        executor=SerialExecutor(), sigma=0.1, seed=42, verbosity=0,
+    )
+    t1, m1 = d1.run(
+        initial, tau1=10, tau2=10, max_trial=4, max_cycle=25, save_freq=5,
+        checkpoint_path=str(ckpt_path), checkpoint_freq=10,
+    )
+    assert ckpt_path.exists()
+    assert len(m1) == 25
+
+    # Part 2: Resume from checkpoint (starts at cycle 20+1 = 21) and run to 40 cycles
+    d2 = PathGennieDriver(
+        engine, progress, never_converge,
+        executor=SerialExecutor(), sigma=0.1, seed=42, verbosity=0,
+    )
+    t2, m2 = d2.run(
+        initial, tau1=10, tau2=10, max_trial=4, max_cycle=40, save_freq=5,
+        checkpoint_path=str(ckpt_path), checkpoint_freq=10,
+    )
+
+    # Resumed run should complete cycles 0..39 (total 40 metrics)
+    assert len(m2) == 40
+    # Metrics from cycles 0..20 should match between Part 1 and Part 2
+    np.testing.assert_allclose(m2[:21], m1[:21])
+
+
