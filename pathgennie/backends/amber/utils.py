@@ -331,12 +331,11 @@ def write_trajectory(
         write_native_trajectory(path, topology_info, frames, dt=dt)
 
 
-def read_native_trajectory(path: Path) -> np.ndarray:
+def read_native_trajectory(path: Path, topology: Optional[Path | str] = None) -> np.ndarray:
     """Read a binary trajectory and return all frames as ``(n_frames, n_atoms, 3)`` in Ångström.
 
-    Supports any format MDAnalysis can open without a topology
-    (``.xtc``, ``.nc``, ``.dcd``, ``.trr``, etc.).  The reader infers
-    ``n_atoms`` from the file itself.
+    Supports any format MDAnalysis can open (``.xtc``, ``.nc``, ``.dcd``, ``.trr``, etc.).
+    Passes optional ``topology`` if available so NetCDF formats have full atom metadata.
     """
 
     try:
@@ -344,7 +343,10 @@ def read_native_trajectory(path: Path) -> np.ndarray:
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise ModuleNotFoundError("MDAnalysis is required to read native trajectory formats") from exc
 
-    u = mda.Universe(str(path))
+    if topology is not None and Path(topology).exists():
+        u = mda.Universe(str(topology), str(path))
+    else:
+        u = mda.Universe(str(path))
     frames = np.array([ts.positions.copy() for ts in u.trajectory], dtype=np.float32)
     if frames.ndim != 3:
         raise ValueError(f"Expected 3-D frames array from {path}, got shape {frames.shape}")

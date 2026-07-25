@@ -1,0 +1,40 @@
+# input_escape.yaml - PathGennie Alanine Dipeptide (OpenMM) Escape Mode
+
+openmm:
+    topology: ala_dipeptide.prmtop
+    initial_restart: ala_dipeptide_equilibrated.rst7
+    platform: CUDA
+
+pathgennie:
+    mode: escape
+    escape_metric: distance_from_start  # Drive away from initial (phi, psi) basin
+    tau1_steps: 50
+    tau2_steps: 100
+    max_trial: 10
+    max_cycle: 200
+    save_freq: 5
+    sigma: 0.1
+    temperature: 300
+    seed: 42
+    verbosity: 1
+    save_subframes: true
+    subframe_stride: 5
+    checkpoint_freq: 10
+    checkpoint_path: "pathgennie_openmm_escape_run/checkpoint.h5"
+    overwrite: false
+
+md:
+    timestep_ps: 0.002
+    friction_per_ps: 1.0
+
+projection:
+    module: phi_psi
+    function: phi_psi_cv
+
+convergence:
+    module: phi_psi
+    function: reached_phi_psi
+    target: [60.0, 60.0]
+    tolerance: 35.0
+
+workdir: pathgennie_openmm_escape_run

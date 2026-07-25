@@ -85,10 +85,11 @@ class CoreAmberEngine:
         out_rst = workdir / f"{stem}.rst7"
         traj_nc = workdir / f"{stem}.nc"
 
-        # Build mdin controls, overriding ntwx when subframes are requested.
+        # Build mdin controls, overriding ntwx and ioutfm when subframes are requested.
         seg_controls = dict(self.mdin_controls)
         if save_subframes:
             seg_controls["ntwx"] = int(subframe_stride)
+            seg_controls["ioutfm"] = 1
 
         write_mdin(
             mdin,
@@ -132,7 +133,7 @@ class CoreAmberEngine:
 
         result_handle = str(out_rst)
         if save_subframes and traj_nc.exists():
-            subframes = read_native_trajectory(traj_nc)
+            subframes = read_native_trajectory(traj_nc, topology=self.topology)
             return result_handle, subframes
         return result_handle
 

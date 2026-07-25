@@ -1,0 +1,49 @@
+# input_escape.yaml - PathGennie CLN025 (Amber) Escape Mode
+# Goal: Drive chignolin away from native folded conformation
+
+amber:
+    topology: chignolin.prmtop
+    initial_restart: folded.rst7
+    mdin: mdin
+    executable: /opt/amber/bin/sander
+
+pathgennie:
+    mode: escape
+    escape_metric: distance_from_start  # Drive away from folded end-to-end distance
+    tau1_steps: 50
+    tau2_steps: 100
+    max_trial: 10
+    workers_per_device: 10
+    max_cycle: 500
+    save_freq: 5
+    sigma: 0.05
+    temperature: 275
+    verbosity: 1
+    save_subframes: true
+    subframe_stride: 10
+    checkpoint_freq: 20
+    checkpoint_path: "pathgennie_escape_run/checkpoint.h5"
+    overwrite: false
+
+md:
+    system: implicit
+    controls:
+        dt: 0.004
+        ntpr: 100
+        ntwx: 0
+        ntwr: 10000
+
+projection:
+    module: projection
+    function: end_to_end_cv
+    start_index: 4
+    end_index: 132
+
+convergence:
+    module: projection
+    function: end_to_end_escaped
+    start_index: 4
+    end_index: 132
+    threshold: 15.0
+
+workdir: pathgennie_escape_run

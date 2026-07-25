@@ -1,7 +1,7 @@
 openmm:
     topology: ala_dipeptide.prmtop
     initial_restart: ala_dipeptide_equilibrated.rst7
-    platform: CPU
+    platform: CUDA
 
 pathgennie:
     mode: target

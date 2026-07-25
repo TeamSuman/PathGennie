@@ -152,6 +152,15 @@ class PathGennieDriver:
                 storage.append("trajectory", coords)
                 storage.append("metric", np.array([metric_val]))
 
+        def save_subframe_block(frames: np.ndarray, metric_val: float) -> None:
+            for frame in np.asarray(frames):
+                trajectory.append(frame.copy())
+                if collect_seeds:
+                    seed_handles.append(self.engine.create_handle(frame))
+                if storage is not None:
+                    storage.append("trajectory", frame)
+                    storage.append("metric", np.array([metric_val]))
+
         cycle_seeds: List[int] = []
 
         def worker(trial_index: int, device: Optional[int]) -> TrialResult:
@@ -223,9 +232,11 @@ class PathGennieDriver:
                 if trial.handle != new_anchor and not (index == chosen_idx and cand_handle == chosen.handle):
                     self.engine.release(trial.handle)
 
-            # When subframes are requested for a save-cycle, we need
-            # previous_anchor alive for the replay, so defer its release.
-            need_replay = (self.save_subframes and cycle % save_freq == 0)
+            # When subframes are requested, replay the committed segment before
+            # releasing previous_anchor.  Capturing only every save_freq-th cycle
+            # creates a discontinuous trajectory because the intervening committed
+            # segments are skipped.
+            need_replay = self.save_subframes and new_anchor != previous_anchor
             if not need_replay:
                 if new_anchor != previous_anchor and previous_anchor != initial_handle:
                     self.engine.release(previous_anchor)
@@ -240,16 +251,11 @@ class PathGennieDriver:
             if observe is not None:
                 observe(coords, cycle)
 
-            if cycle % save_freq == 0:
-                # ---- intra-segment subframe capture ----
-                if self.save_subframes:
-                    # Re-run the winning trial's tau1 with subframe capture.
-                    replay_handle = self.engine.clone_anchor(previous_anchor)
-
-                    # Now safe to release previous_anchor.
-                    if new_anchor != previous_anchor and previous_anchor != initial_handle:
-                        self.engine.release(previous_anchor)
-
+            if need_replay:
+                replay_handle = self.engine.clone_anchor(previous_anchor)
+                tau1_replay_handle = None
+                tau2_replay_handle = None
+                try:
                     tau1_result = self.engine.run_segment(
                         replay_handle, tau1, randomize_velocities=True,
                         seed=cycle_seeds[chosen_idx], device=tau2_device,
@@ -257,27 +263,34 @@ class PathGennieDriver:
                     )
                     tau1_replay_handle, tau1_subframes = tau1_result
 
-                    # Re-run tau2 from the replayed tau1 endpoint.
-                    tau2_result = self.engine.run_segment(
-                        tau1_replay_handle, tau2, randomize_velocities=False,
-                        seed=tau2_seed, device=tau2_device,
-                        save_subframes=True, subframe_stride=self.subframe_stride,
-                    )
-                    tau2_replay_handle, tau2_subframes = tau2_result
+                    subframe_blocks = [tau1_subframes]
+                    if new_anchor == tau2_handle:
+                        tau2_result = self.engine.run_segment(
+                            tau1_replay_handle, tau2, randomize_velocities=False,
+                            seed=tau2_seed, device=tau2_device,
+                            save_subframes=True, subframe_stride=self.subframe_stride,
+                        )
+                        tau2_replay_handle, tau2_subframes = tau2_result
+                        subframe_blocks.append(tau2_subframes)
 
-                    # Concatenate tau1 + tau2 subframes into trajectory.
-                    all_subframes = np.concatenate([tau1_subframes, tau2_subframes], axis=0)
-                    for frame in all_subframes:
-                        trajectory.append(frame.copy())
+                    nonempty_blocks = [block for block in subframe_blocks if len(block) > 0]
+                    if nonempty_blocks:
+                        save_subframe_block(np.concatenate(nonempty_blocks, axis=0), metric)
 
-                    # Clean up replay handles.
+                finally:
+                    if tau2_replay_handle is not None:
+                        self.engine.release(tau2_replay_handle)
+                    if tau1_replay_handle is not None:
+                        self.engine.release(tau1_replay_handle)
                     self.engine.release(replay_handle)
-                    self.engine.release(tau1_replay_handle)
-                    self.engine.release(tau2_replay_handle)
-                else:
-                    save_frame(coords, anchor, metric)
-
+                    if new_anchor != previous_anchor and previous_anchor != initial_handle:
+                        self.engine.release(previous_anchor)
                 last_saved_cycle = cycle
+
+            if cycle % save_freq == 0:
+                if not self.save_subframes:
+                    save_frame(coords, anchor, metric)
+                    last_saved_cycle = cycle
                 if self.verbosity:
                     print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")
 

@@ -94,6 +94,88 @@ def _make_driver_with_subframes(executor, seed, *, save_subframes=False, subfram
     return driver, initial
 
 
+class LinearEngine:
+    """Small deterministic engine for trajectory-continuity assertions."""
+
+    def __init__(self, *, tau2_delta=1.0):
+        self.tau2_delta = float(tau2_delta)
+        self._cache = {}
+        self._next_id = 0
+
+    def _store(self, x):
+        handle = self._next_id
+        self._next_id += 1
+        self._cache[handle] = float(x)
+        return handle
+
+    def create_state(self, position):
+        return self._store(float(position))
+
+    def create_handle(self, coords):
+        return self._store(float(np.asarray(coords)[0, 0]))
+
+    def clone_anchor(self, handle):
+        return self._store(self._cache[handle])
+
+    def run_segment(
+        self, handle, n_steps, *, randomize_velocities=True, seed=0, device=None,
+        save_subframes=False, subframe_stride=1,
+    ):
+        x = self._cache[handle]
+        delta = 1.0 if randomize_velocities else self.tau2_delta
+        subframes = []
+        for step in range(int(n_steps)):
+            x += delta
+            if save_subframes and (step + 1) % subframe_stride == 0:
+                subframes.append([[x, 0.0, 0.0]])
+        result = self._store(x)
+        if save_subframes:
+            return result, np.asarray(subframes, dtype=float)
+        return result
+
+    def get_coords(self, handle):
+        return np.asarray([[self._cache[handle], 0.0, 0.0]], dtype=float)
+
+    def release(self, handle):
+        self._cache.pop(handle, None)
+
+
+def test_subframes_are_continuous_across_save_freq_gaps():
+    engine = LinearEngine()
+    initial = engine.create_state(0.0)
+    progress = TargetMetric(lambda coords: np.array([coords[0, 0]]), target_cv=np.array([999.0]))
+    driver = PathGennieDriver(
+        engine, progress, lambda coords: False,
+        executor=SerialExecutor(), sigma=0.1, seed=1, verbosity=0,
+        save_subframes=True, subframe_stride=1,
+    )
+
+    traj, metrics = driver.run(
+        initial, tau1=2, tau2=3, max_trial=1, max_cycle=6, save_freq=3,
+    )
+
+    assert len(metrics) == 6
+    np.testing.assert_allclose(traj[:, 0, 0], np.arange(1.0, 31.0))
+
+
+def test_subframes_skip_rejected_tau2_segment():
+    engine = LinearEngine(tau2_delta=-10.0)
+    initial = engine.create_state(0.0)
+    progress = TargetMetric(lambda coords: np.array([coords[0, 0]]), target_cv=np.array([999.0]))
+    driver = PathGennieDriver(
+        engine, progress, lambda coords: False,
+        executor=SerialExecutor(), sigma=0.1, seed=1, verbosity=0,
+        reject_worse_tau2=True, save_subframes=True, subframe_stride=1,
+    )
+
+    traj, metrics = driver.run(
+        initial, tau1=2, tau2=3, max_trial=1, max_cycle=3, save_freq=3,
+    )
+
+    assert len(metrics) == 3
+    np.testing.assert_allclose(traj[:, 0, 0], np.arange(1.0, 7.0))
+
+
 def test_subframes_capture_intermediate_positions():
     """With subframes enabled, the trajectory should have many more frames than
     the endpoint-only baseline (one frame per cycle → many frames per cycle)."""
@@ -177,5 +259,4 @@ def test_driver_checkpoint_resume(tmp_path):
     assert len(m2) == 40
     # Metrics from cycles 0..20 should match between Part 1 and Part 2
     np.testing.assert_allclose(m2[:21], m1[:21])
-
 

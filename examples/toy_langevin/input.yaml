@@ -1,0 +1,26 @@
+# input.yaml - PathGennie Toy Langevin (Wolfe-Quapp) benchmark configuration
+
+pathgennie:
+    mode: target
+    target_projection: [1.124, -1.485]  # Target minimum of Wolfe-Quapp potential
+    tau1_steps: 20
+    tau2_steps: 40
+    max_trial: 8
+    max_cycle: 100
+    save_freq: 5
+    sigma: 0.1
+    temperature: 300
+    seed: 42
+    verbosity: 1
+    save_subframes: true
+    subframe_stride: 5
+    checkpoint_freq: 10
+    checkpoint_path: "pathgennie_toy_run/checkpoint.h5"
+    overwrite: false
+
+md:
+    dt: 0.005
+    kT: 1.0
+    gamma: 1.0
+
+workdir: pathgennie_toy_run

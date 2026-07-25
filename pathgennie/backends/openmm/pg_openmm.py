@@ -168,7 +168,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
                 pressure=float(md_cfg.get("pressure", 1.0))
             )
             
-            platform_name = openmm_cfg.get("platform", "CPU")
+            platform_name = openmm_cfg.get("platform", "CUDA")
             platform = Platform.getPlatformByName(platform_name)
             simulation = Simulation(top.topology, system, integrator, platform)
             simulation.context.setPositions(positions)
@@ -184,7 +184,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
             temperature=temperature,
             timestep_ps=timestep_ps,
             friction_per_ps=float(md_cfg.get("friction_per_ps", 1.0)),
-            platform_name=openmm_cfg.get("platform", "CPU"),
+            platform_name=openmm_cfg.get("platform", "CUDA"),
             plumed_file=md_cfg.get("plumed_file", None),
         )
 

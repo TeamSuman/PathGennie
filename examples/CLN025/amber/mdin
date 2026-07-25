@@ -17,6 +17,6 @@ PathGennie CLN025 implicit-solvent MD
     ntpr = 100,
     ntwx = 0,
     ntwr = 5000,
-    ioutfm = 0,
+    ioutfm = 1,
     ntxo = 1,
  /
