@@ -1,10 +1,14 @@
 import numpy as np
 
 class Resampler:
-    def __init__(self, bins, target_per_bin=10, weight_threshold=1e-30):
+    def __init__(self, bins, target_per_bin=10, weight_threshold=1e-30, seed=None):
         self.bins = bins
         self.N_TARGET_PER_BIN = target_per_bin
         self.weight_threshold = weight_threshold
+        # Resampling draws go through a dedicated Generator rather than NumPy's
+        # global RNG, so a run can be reproduced from a single seed. seed=None
+        # keeps the previous non-deterministic behaviour.
+        self.rng = np.random.default_rng(seed)
 
     def assign_bins_and_weights(self, walkers):
         if not walkers:
@@ -73,7 +77,7 @@ class Resampler:
             prob = weights / total_weight
         else:
             prob = np.ones_like(weights) / len(weights)
-        clone_indices = np.random.choice(walker_indices, size=number_of_clones, replace=True, p=prob)
+        clone_indices = self.rng.choice(walker_indices, size=number_of_clones, replace=True, p=prob)
         split_events = []
         unique_parents, clone_counts = np.unique(clone_indices, return_counts=True)
         for parent_idx, num_clones in zip(unique_parents, clone_counts):
@@ -105,16 +109,16 @@ class Resampler:
         merge_event = []
         while len(bin_walkers) > self.N_TARGET_PER_BIN:
             # Randomly choose two distinct walkers
-            i, j = np.random.choice(len(bin_walkers), size=2, replace=False)
+            i, j = self.rng.choice(len(bin_walkers), size=2, replace=False)
             w1, w2 = bin_walkers[i], bin_walkers[j]
 
             # Pick survivor proportional to weights
             total = w1.weight + w2.weight
             if total == 0:
-                survivor, loser = (w1, w2) if np.random.rand() < 0.5 else (w2, w1)
+                survivor, loser = (w1, w2) if self.rng.random() < 0.5 else (w2, w1)
             else:
                 p_survive_w1 = w1.weight / total
-                if np.random.rand() < p_survive_w1:
+                if self.rng.random() < p_survive_w1:
                     survivor, loser = (w1, w2)
                     merge_event.append([walker_indices[i], walker_indices[j]])
                 else:

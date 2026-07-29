@@ -55,7 +55,14 @@ class WESS(WeightedEnsembleBase):
             )
         self.bins.initialize_bins()
 
-        self.resampler = Resampler(self.bins, target_per_bin=self.n_walkers_per_bin)
+        # Master seed for every stochastic resampling decision. Set it in the
+        # config to make a run reproducible; leave it unset for fresh entropy.
+        self.seed = self.config.get('seed')
+        self._rng = None
+
+        self.resampler = Resampler(
+            self.bins, target_per_bin=self.n_walkers_per_bin, seed=self.seed
+        )
         #self.resampler = LigandResampler(self.bins, target_per_bin = self.n_walkers_per_bin, protein_idx = self.config.get('protein_idx'), ligand_idx = self.config.get('ligand_idx'))
 
         # Identify the "source" bin

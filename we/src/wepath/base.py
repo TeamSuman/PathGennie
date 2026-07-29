@@ -35,6 +35,18 @@ class WeightedEnsembleBase:
     worker setup, trajectory storage, and logging.
     """
 
+    @property
+    def rng(self):
+        """Dedicated Generator for stochastic resampling decisions.
+
+        Using NumPy's global RNG made a run impossible to reproduce even with
+        identical inputs. Seeded from ``self.seed`` when the config supplies one;
+        ``None`` preserves the previous non-deterministic behaviour.
+        """
+        if getattr(self, "_rng", None) is None:
+            self._rng = np.random.default_rng(getattr(self, "seed", None))
+        return self._rng
+
     def _log_flux_data(self, iteration, warp_ids, files):
         """Writes flux data for warped walkers to the log file."""
         if not warp_ids:
@@ -320,46 +332,46 @@ class WeightedEnsembleBase:
             if not walkers: # Handle case with no walkers
                 return
 
-            changed = True
+            # Weighted Ensemble is unbiased only because resampling conserves total
+            # probability -- the rate constant is literally a sum of walker weights
+            # arriving at the target. So weight must never be stripped from a donor
+            # unless there is a recipient to receive it.
+            #
+            # If the walkers cannot collectively hold their own weight under the cap
+            # (total > cap * n), no assignment satisfies the cap without destroying
+            # probability. In that case leave the weights untouched rather than
+            # silently biasing every downstream observable.
+            total_weight = sum(w.weight for w in walkers)
+            if total_weight > cap * len(walkers) * (1.0 + 1e-12):
+                print(
+                    f"[WESS] Weight cap {cap} unsatisfiable for {len(walkers)} walker(s) "
+                    f"holding {total_weight:.6g}; skipping redistribution to conserve weight."
+                )
+                return
+
             max_iters = 100 # Safety break to prevent unforeseen infinite loops
             iter_count = 0
 
-            while changed and iter_count < max_iters:
+            while iter_count < max_iters:
                 iter_count += 1
-                changed = False
-                total_excess = 0.0
-                donors = []
 
-                # Find walkers exceeding the cap and collect their excess weight
-                for w in walkers:
-                    if w.weight > cap:
-                        excess = w.weight - cap
-                        w.weight = cap
-                        total_excess += excess
-                        donors.append(w)
+                # Classify BEFORE mutating anything, so excess is only ever removed
+                # in the same step that hands it to recipients.
+                donors = [w for w in walkers if w.weight > cap]
+                recipients = [w for w in walkers if w.weight <= cap]
 
-                if total_excess > 1e-12: # Only proceed if there's significant excess
-                    # Identify recipients (all walkers not capped in this iteration)
-                    recipients = [w for w in walkers if w not in donors]
+                if not donors or not recipients:
+                    break
 
-                    if recipients:
-                        # Store the total weight of recipients BEFORE distribution
-                        weight_before_dist = sum(r.weight for r in recipients)
+                total_excess = sum(w.weight - cap for w in donors)
+                if total_excess <= 1e-12:
+                    break
 
-                        share = total_excess / len(recipients)
-                        for r in recipients:
-                            r.weight += share
-
-                        # Store the total weight of recipients AFTER distribution
-                        weight_after_dist = sum(r.weight for r in recipients)
-
-                        # Check if the distribution actually changed anything
-                        # If not, we've hit a precision limit and should stop.
-                        if abs(weight_after_dist - weight_before_dist) > 1e-12:
-                            changed = True
-                    else:
-                        # All walkers are capped; no recipients left. Stop.
-                        break
+                for w in donors:
+                    w.weight = cap
+                share = total_excess / len(recipients)
+                for r in recipients:
+                    r.weight += share
 
             if iter_count >= max_iters:
                 print("Warning: Weight redistribution reached max iterations.")
@@ -463,7 +475,7 @@ class WeightedEnsembleBase:
             if len(survivor_idxs) == 0:
                 continue
             #print(survivor_idxs)
-            survivor_to_copy_from = np.random.choice(survivor_idxs)
+            survivor_to_copy_from = self.rng.choice(survivor_idxs)
             # Replace donor walker with clone of survivor
             saved_weight = self.walkers[survivor_to_copy_from].weight
             self.walkers[survivor_to_copy_from] = walkers_before[donor_idx].clone()
