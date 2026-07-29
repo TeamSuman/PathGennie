@@ -27,7 +27,7 @@ import numpy as np
 from pathgennie.backends.amber.utils import read_native_trajectory
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_device
-from pathgennie.core.progress import EscapeMetric, TargetMetric
+from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
 from pathgennie.utils.config import load_config
 from pathgennie.utils.scratch import resolve_scratch_dir
@@ -36,6 +36,7 @@ from .utils import (
     enrich_args,
     load_function,
     read_gro_coords,
+    read_masses_from_topology,
     read_topology_info,
     resolve_case_path,
     write_gro_coords,
@@ -297,7 +298,6 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, gmx_cfg["topology"])
     initial_structure = resolve_case_path(case_dir, gmx_cfg["initial_structure"])
-    import shutil
     executable_str = gmx_cfg["executable"]
     expanded_path = str(Path(executable_str).expanduser())
     resolved_exe = shutil.which(expanded_path) or shutil.which(executable_str)
@@ -319,6 +319,25 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     if not metadata_source.exists():
         raise FileNotFoundError(f"GROMACS reference template file not found: {metadata_source}")
     topology_info = read_topology_info(metadata_source)
+
+    # A .gro/.pdb reference template carries no masses, so read_topology_info returns
+    # placeholders. Recover the real per-atom masses from the GROMACS topology, or a
+    # mass-weighted CV would silently become an unweighted centroid.
+    if topology_info.get("masses_are_placeholder"):
+        real_masses = read_masses_from_topology(
+            topology, include_dir=gmx_cfg.get("include_dir")
+        )
+        expected = len(topology_info.get("atom_names", []))
+        if real_masses is not None and (expected == 0 or real_masses.size == expected):
+            topology_info["masses"] = real_masses
+            topology_info["masses_are_placeholder"] = False
+        elif real_masses is not None:
+            raise ValueError(
+                f"Mass count from {topology} ({real_masses.size}) does not match the "
+                f"reference template {metadata_source} ({expected} atoms). The topology "
+                "and the reference structure describe different systems."
+            )
+
     temperature = float(pg_cfg.get("temperature", 300.0))
     mdp_path = resolve_case_path(case_dir, gmx_cfg.get("mdp", "md.mdp"))
     if not mdp_path.exists():
@@ -373,7 +392,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     else:
         progress = EscapeMetric(
             proj_fn, start_cv, projection_args=projection_args,
-            escape_metric=pg_cfg.get("escape_metric", "cv0"),
+            escape_metric=pg_cfg.get("escape_metric", DEFAULT_ESCAPE_METRIC),
         )
 
     def convergence(coords: np.ndarray) -> bool:

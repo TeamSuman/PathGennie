@@ -196,6 +196,20 @@ def enrich_args(args: dict[str, object], topology_info: dict[str, object]) -> di
     if group_a_resname is not None and group_b_resname is not None:
         args["group_a_indices"] = atom_group_for_resname(topology_info, str(group_a_resname))
         args["group_b_indices"] = atom_group_for_resname(topology_info, str(group_b_resname))
+        # Refuse to hand a mass-weighted CV fabricated masses. A .gro/.pdb carries no
+        # masses, so the metadata readers fill in ones; injecting those silently turns a
+        # centre-of-mass CV into an unweighted centroid (measured: 5.6% error on the
+        # OAMe-G2 host-guest COM distance) with no error and no warning. Fail loudly
+        # instead -- the backend is expected to supply real masses from the topology.
+        if topology_info.get("masses_are_placeholder"):
+            raise ValueError(
+                "Refusing to pass placeholder masses to a mass-weighted collective "
+                "variable: the metadata file carries no mass information, so every mass "
+                "would be 1.0 and a centre-of-mass CV would silently become an unweighted "
+                "centroid. Supply the real masses from the topology (see "
+                "pathgennie.backends.gromacs.utils.read_masses_from_topology) or drop "
+                "'group_a_resname'/'group_b_resname' and pass explicit atom indices."
+            )
         args["masses"] = topology_info["masses"]
     return args
 

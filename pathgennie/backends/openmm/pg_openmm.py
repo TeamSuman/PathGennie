@@ -21,9 +21,14 @@ from pathgennie.backends.amber.utils import (
     write_metrics_csv,
     write_trajectory,
 )
-from pathgennie.backends.gromacs.utils import read_topology_info, read_gro_coords
+from pathgennie.backends.gromacs.utils import (
+    read_gro_coords,
+    read_masses_from_topology,
+    read_topology_info,
+)
 from openmm.app import GromacsGroFile, GromacsTopFile
 
+from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC
 from pathgennie.core.strategy import resolve_profile
 from pathgennie.utils.config import load_config
 
@@ -106,6 +111,16 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         topology_info = read_topology_info(initial_restart)
     else:
         topology_info = parse_prmtop(topology)
+
+    # A .gro coordinate file carries no masses, so read_topology_info returns
+    # placeholders. Recover the real ones from the topology, or a mass-weighted CV
+    # would silently degrade to an unweighted centroid.
+    if topology_info.get("masses_are_placeholder"):
+        real_masses = read_masses_from_topology(topology)
+        expected = len(topology_info.get("atom_names", []))
+        if real_masses is not None and (expected == 0 or real_masses.size == expected):
+            topology_info["masses"] = real_masses
+            topology_info["masses_are_placeholder"] = False
 
     temperature = float(pg_cfg.get("temperature", 300.0))
     md_cfg = cfg.get("md", {})
@@ -242,6 +257,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         target_projection=target_projection,
         convergence_fn=conv_fn,
         convergence_args=convergence_args,
+        escape_metric=pg_cfg.get("escape_metric", DEFAULT_ESCAPE_METRIC),
         temperature=temperature,
         sigma=pg_cfg.get("sigma", 0.05),
         seed=pg_cfg.get("seed"),

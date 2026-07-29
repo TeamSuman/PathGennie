@@ -20,12 +20,64 @@ __all__ = [
     "enrich_args",
     "load_function",
     "read_gro_coords",
+    "read_masses_from_topology",
     "read_topology_info",
     "resolve_case_path",
+    "write_gro_coords",
     "write_metrics_csv",
     "write_multimodel_pdb",
     "write_trajectory",
 ]
+
+
+def read_masses_from_topology(
+    topology_path: str | Path, include_dir: str | Path | None = None
+) -> np.ndarray | None:
+    """Return per-atom masses (amu) from a GROMACS topology, or ``None``.
+
+    A ``.gro``/``.pdb`` coordinate file carries no masses, so the metadata readers
+    below can only supply placeholders. Any mass-weighted collective variable (a
+    centre-of-mass distance, say) silently degrades to an unweighted centroid when
+    fed those placeholders, so the real masses are recovered from the topology here.
+
+    ParmEd is tried first (purpose-built for GROMACS topologies and handles
+    ``#include`` via ``include_dir``), then MDAnalysis. ``None`` is returned when
+    neither can parse the file — callers must treat that as "masses unknown" rather
+    than substituting ones.
+    """
+
+    topology_path = Path(topology_path)
+    if not topology_path.exists():
+        return None
+
+    try:  # ParmEd: best GROMACS .top support
+        import parmed as pmd
+
+        kwargs = {}
+        if include_dir is not None:
+            kwargs["includeDir"] = str(include_dir)
+        structure = pmd.load_file(str(topology_path), **kwargs)
+        masses = np.asarray([atom.mass for atom in structure.atoms], dtype=float)
+        if masses.size and np.all(np.isfinite(masses)) and masses.max() > 0:
+            return masses
+    except Exception:  # noqa: BLE001 - fall through to the next parser
+        pass
+
+    try:  # MDAnalysis is a hard dependency, so this is the reliable fallback
+        import warnings
+
+        import MDAnalysis as mda
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            universe = mda.Universe(str(topology_path), topology_format="ITP")
+            masses = np.asarray(universe.atoms.masses, dtype=float)
+        if masses.size and np.all(np.isfinite(masses)) and masses.max() > 0:
+            return masses
+    except Exception:  # noqa: BLE001 - masses simply unavailable
+        pass
+
+    return None
 
 
 def read_topology_info(path: str | Path) -> dict[str, object]:
@@ -134,7 +186,10 @@ def read_gro_topology_info(path: str | Path) -> dict[str, object]:
         "atom_names": atom_names,
         "atom_residue_names": atom_residue_names,
         "atom_residue_numbers": atom_residue_numbers,
+        # A .gro carries no masses. This is a PLACEHOLDER: read_masses_from_topology()
+        # must supply the real values before any mass-weighted CV uses them.
         "masses": np.ones(natom, dtype=float),
+        "masses_are_placeholder": True,
         "box_lengths": box_lengths,
         "residue_indices": residue_indices,
     }
@@ -173,7 +228,9 @@ def read_pdb_topology_info(path: str | Path) -> dict[str, object]:
         "atom_names": atom_names,
         "atom_residue_names": atom_residue_names,
         "atom_residue_numbers": atom_residue_numbers,
+        # A .pdb carries no masses -- placeholder, see read_masses_from_topology().
         "masses": np.ones(len(atom_names), dtype=float),
+        "masses_are_placeholder": True,
         "residue_indices": residue_indices,
     }
 

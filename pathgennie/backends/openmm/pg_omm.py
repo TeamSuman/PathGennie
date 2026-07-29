@@ -21,7 +21,7 @@ from openmm.app import Simulation
 
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import SerialExecutor, ThreadDevicePool
-from pathgennie.core.progress import EscapeMetric, TargetMetric
+from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
 
 from .engine import OpenMMEngine, resolve_worker_count
 
@@ -38,7 +38,7 @@ class PathGennieMD:
         target_projection: Optional[np.ndarray] = None,
         convergence_fn: Optional[Callable] = None,
         convergence_args: Optional[Dict] = None,
-        escape_direction: str = "auto",
+        escape_metric: str = DEFAULT_ESCAPE_METRIC,
         temperature: float = 300.0,
         sigma: float = 0.5,
         seed: Optional[int] = None,
@@ -62,6 +62,7 @@ class PathGennieMD:
         self.target = np.asarray(target_projection) if target_projection is not None else None
         self.converge_fn = convergence_fn
         self.converge_args = convergence_args or {}
+        self.escape_metric = escape_metric
         self.temperature = temperature
         self.sigma = sigma
         self.seed = seed
@@ -98,7 +99,7 @@ class PathGennieMD:
         if self.mode == "escape":
             progress = EscapeMetric(
                 self.proj_fn, start_cv, projection_args=self.proj_args,
-                escape_metric="distance_from_start",
+                escape_metric=self.escape_metric,
             )
         else:
             progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args)

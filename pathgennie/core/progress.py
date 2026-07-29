@@ -20,7 +20,22 @@ from typing import Callable, Optional, Protocol
 
 import numpy as np
 
-__all__ = ["ProgressVariable", "EscapeMetric", "TargetMetric", "CallableProjection"]
+__all__ = [
+    "ProgressVariable",
+    "EscapeMetric",
+    "TargetMetric",
+    "CallableProjection",
+    "DEFAULT_ESCAPE_METRIC",
+]
+
+#: Escape-mode objective used when a case does not set ``escape_metric``.
+#:
+#: ``"distance_from_start"`` maximises the Euclidean distance from the starting CV,
+#: which is the objective the method is published with. The backends previously
+#: disagreed -- OpenMM hardcoded this value while AMBER/GROMACS defaulted to the
+#: legacy ``"cv0"`` -- so the same input.yaml optimised a different quantity
+#: depending on the engine. They now share this default.
+DEFAULT_ESCAPE_METRIC = "distance_from_start"
 
 
 class ProgressVariable(Protocol):

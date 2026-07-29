@@ -18,7 +18,7 @@ import numpy as np
 
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import ThreadDevicePool
-from pathgennie.core.progress import EscapeMetric, TargetMetric
+from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
 from pathgennie.utils.config import load_config
 from pathgennie.utils.scratch import resolve_scratch_dir
@@ -55,7 +55,6 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     pg_cfg = resolve_profile(cfg["pathgennie"])
     topology = resolve_case_path(case_dir, amber_cfg["topology"])
     initial_restart = resolve_case_path(case_dir, amber_cfg["initial_restart"])
-    import shutil
     executable_str = amber_cfg["executable"]
     expanded_path = str(Path(executable_str).expanduser())
     resolved_exe = shutil.which(expanded_path) or shutil.which(executable_str)
@@ -111,7 +110,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     else:
         progress = EscapeMetric(
             proj_fn, start_cv, projection_args=projection_args,
-            escape_metric=pg_cfg.get("escape_metric", "cv0"),
+            escape_metric=pg_cfg.get("escape_metric", DEFAULT_ESCAPE_METRIC),
         )
 
     def convergence(coords: np.ndarray) -> bool:
