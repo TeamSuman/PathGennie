@@ -47,7 +47,7 @@ to real MD end-to-end. These are the roadmap's focus.
 | ------ | ------ | ----- |
 | `devel` | merged → this branch | Superset of features; brought to `main`. |
 | `pathcv` | already ⊆ `devel` | PathCV / artificial-PCA-space mode; no separate import needed. |
-| `claude/…gpu-optimization…` | already ⊆ `devel` | Shared driver, device pool, WE/OPES/search. |
+| `gpu-optimization` branch | already ⊆ `devel` | Shared driver, device pool, WE/OPES/search. |
 | `v2` | already ⊆ `main` | Its later-deleted files (OAMe-G2 AMBER example) were intentionally relocated to OpenMM in `devel`; nothing orphaned. |
 
 Because `pathcv` and the GPU branch were already merged into `devel`, and `v2`

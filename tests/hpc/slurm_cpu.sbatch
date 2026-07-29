@@ -7,8 +7,8 @@
 #
 #     sbatch tests/hpc/slurm_cpu.sbatch
 #
-# Results (JSON + logs) land in tests/hpc/results/<jobid>/. Hand that directory
-# to another Claude Code session with tests/hpc/DEBUGGING.md to interpret/debug.
+# Results (JSON + logs) land in tests/hpc/results/<jobid>/. Read that directory
+# alongside tests/hpc/DEBUGGING.md to interpret failures and debug.
 # =============================================================================
 #SBATCH --job-name=pg-cpu-test
 #SBATCH --nodes=1

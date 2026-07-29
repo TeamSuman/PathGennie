@@ -9,8 +9,8 @@ HPC-critical code paths before spending allocation on real MD.
 It prints a human-readable summary and (with ``--out``) writes a machine-readable
 JSON report. Exit code is non-zero if any check FAILs (SKIPs do not fail the run).
 
-The JSON is designed for a follow-up automated agent (e.g. another Claude Code
-session) to parse: each entry has ``name``, ``status`` (pass|fail|skip),
+The JSON is designed to be machine-readable so a follow-up automated tool can
+parse it: each entry has ``name``, ``status`` (pass|fail|skip),
 ``detail``, and where relevant ``data``. See tests/hpc/DEBUGGING.md for how to
 map a failing check to a cause and fix.
 

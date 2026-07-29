@@ -3,8 +3,8 @@
 A self-contained battery for validating PathGennie on real HPC clusters —
 **Slurm and PBS**, **CPU-only and GPU** queues. It is designed so you can run it
 on the target machine and hand the `results/` directory (plus
-[`DEBUGGING.md`](DEBUGGING.md)) to an automated agent (e.g. another Claude Code
-session) that will interpret the JSON and, if needed, debug the code or scripts.
+[`DEBUGGING.md`](DEBUGGING.md)) to whoever is debugging the deployment: the JSON
+is machine-readable and `DEBUGGING.md` maps each failure to its likely cause.
 
 ## What is here
 
