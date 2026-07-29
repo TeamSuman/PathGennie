@@ -35,6 +35,7 @@ output:       { ... }            # optional: output file names
 | `save_freq` | int | 10 | Save a frame every this many cycles. |
 | `target_projection` | list[float] | — | Required when `mode: target`. |
 | `escape_metric` | `distance_from_start` \| `cv0` | `distance_from_start` | Escape scoring. Shared by all three backends since v1.4; previously OpenMM hardcoded `distance_from_start` while AMBER/GROMACS used `cv0`. |
+| `projection.periodic` | list \| omitted | omitted | Per-component CV period (`360.0` for degrees, `null` for non-periodic). Required for dihedral CVs — without it the ±180° branch cut inflates the progress metric ~10×. |
 | `reject_worse_tau2` | bool | false | Keep the sampler if the runner regresses. |
 | `reject_worse_anchor` | bool | false | Keep the old anchor if the candidate regresses. |
 | **`devices`** | list[int] | none | **v0.2.0** — GPU indices to spread the swarm across. |

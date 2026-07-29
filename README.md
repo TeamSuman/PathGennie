@@ -293,6 +293,14 @@ The file has four main parts:
 #### 5. Projection CV (`projection`)
 * `module` (str): Case-local Python filename (without `.py`) containing the CV calculation function.
 * `function` (str): Name of the Python function within that module.
+* `periodic` (list, optional): Per-component CV period, used when scoring progress. Give
+  `360.0` for an angle in degrees, `6.283185` for radians, and `null` for a non-periodic
+  component such as a distance or PCA projection — e.g. `periodic: [360.0, 360.0]` for a
+  (phi, psi) CV, or `[360.0, null]` for an angle plus a distance. Omit it entirely and every
+  component is treated as non-periodic (the previous behaviour). **Set this for dihedral CVs:**
+  without it, two angles either side of the ±180° branch cut are scored as ~360° apart when
+  they are adjacent, which inflates the progress metric ~10× and rewards the sampler for
+  crossing the cut instead of making real progress.
 * *Additional options*: Any extra keys defined in this block are passed dynamically as keyword arguments (`**kwargs`) to the projection function.
 
 #### 6. Convergence (`convergence`)

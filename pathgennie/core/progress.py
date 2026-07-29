@@ -16,7 +16,7 @@ These wrap, verbatim, the logic in ``pg_omm.py:78-83`` and
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Protocol
+from typing import Callable, Optional, Protocol, Sequence
 
 import numpy as np
 
@@ -25,6 +25,7 @@ __all__ = [
     "EscapeMetric",
     "TargetMetric",
     "CallableProjection",
+    "periodic_delta",
     "DEFAULT_ESCAPE_METRIC",
 ]
 
@@ -67,6 +68,37 @@ class CallableProjection:
         return np.asarray(self._fn(coords, **kwargs), dtype=float)
 
 
+def periodic_delta(
+    delta: np.ndarray, periodic: Optional[Sequence[Optional[float]]]
+) -> np.ndarray:
+    """Wrap CV differences into the minimum image for periodic components.
+
+    ``periodic`` is ``None`` (every component treated as non-periodic — the historical
+    behaviour) or one entry per CV component: a period (e.g. ``360.0`` for degrees,
+    ``2*np.pi`` for radians) or ``None``/``0`` for a non-periodic component such as a
+    distance or a PCA projection.
+
+    Without this, a dihedral pair straddling the +-180 deg branch cut is scored as ~360 deg
+    apart when it is in fact adjacent, which inflates the progress metric and rewards the
+    sampler for crossing the cut instead of for real progress.
+    """
+
+    delta = np.asarray(delta, dtype=float)
+    if periodic is None:
+        return delta
+    periods = list(periodic)
+    if len(periods) != delta.size:
+        raise ValueError(
+            f"periodic has {len(periods)} entries but the CV has {delta.size} components"
+        )
+    out = delta.copy()
+    for i, period in enumerate(periods):
+        if period:
+            p = float(period)
+            out[i] = (out[i] + 0.5 * p) % p - 0.5 * p
+    return out
+
+
 class EscapeMetric(CallableProjection):
     """Maximise progress away from the starting CV."""
 
@@ -77,9 +109,11 @@ class EscapeMetric(CallableProjection):
         *,
         projection_args: Optional[dict] = None,
         escape_metric: str = "distance_from_start",
+        periodic: Optional[Sequence[Optional[float]]] = None,
     ):
         super().__init__(projection_fn, projection_args)
         self.start_cv = np.asarray(start_cv, dtype=float)
+        self.periodic = periodic
         if escape_metric not in ("distance_from_start", "cv0"):
             raise ValueError("escape_metric must be 'distance_from_start' or 'cv0'")
         self.escape_metric = escape_metric
@@ -98,7 +132,7 @@ class EscapeMetric(CallableProjection):
         if len(cv) < len(s_cv):
             s_cv = s_cv[-len(cv):]
 
-        return float(np.linalg.norm(cv - s_cv))
+        return float(np.linalg.norm(periodic_delta(cv - s_cv, self.periodic)))
 
 
 class TargetMetric(CallableProjection):
@@ -110,9 +144,11 @@ class TargetMetric(CallableProjection):
         target_cv: np.ndarray,
         *,
         projection_args: Optional[dict] = None,
+        periodic: Optional[Sequence[Optional[float]]] = None,
     ):
         super().__init__(projection_fn, projection_args)
         self.target_cv = np.asarray(target_cv, dtype=float)
+        self.periodic = periodic
 
     def metric(self, cv: np.ndarray) -> float:
         cv = np.asarray(cv, dtype=float)
@@ -125,4 +161,4 @@ class TargetMetric(CallableProjection):
         if len(cv) < len(t_cv):
             t_cv = t_cv[-len(cv):]
 
-        return float(-np.linalg.norm(cv - t_cv))
+        return float(-np.linalg.norm(periodic_delta(cv - t_cv, self.periodic)))

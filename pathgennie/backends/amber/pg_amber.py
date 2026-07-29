@@ -87,7 +87,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     conv_fn = load_function(case_dir, cfg["convergence"]["module"], cfg["convergence"]["function"])
 
     projection_args = {
-        key: value for key, value in cfg.get("projection", {}).items() if key not in {"module", "function", "reference"}
+        key: value for key, value in cfg.get("projection", {}).items() if key not in {"module", "function", "reference", "periodic"}
     }
     convergence_args = {
         key: value for key, value in cfg.get("convergence", {}).items() if key not in {"module", "function"}
@@ -99,18 +99,24 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     start_cv = np.asarray(proj_fn(start_coords, **projection_args), dtype=float)
     print(f"Initial CV: {start_cv}")
 
+    # Optional per-component CV periods (e.g. [360.0, 360.0] for dihedrals in
+    # degrees). Omit, or use null per component, for non-periodic CVs.
+    cv_periodic = cfg.get("projection", {}).get("periodic")
+
     mode = pg_cfg.get("mode", "escape")
     if mode == "target":
         if "target_projection" not in pg_cfg:
             raise ValueError("pathgennie.mode is 'target', but pathgennie.target_projection is missing")
         target_projection = np.asarray(pg_cfg["target_projection"], dtype=float).reshape(-1)
-        progress = TargetMetric(proj_fn, target_projection, projection_args=projection_args)
+        progress = TargetMetric(proj_fn, target_projection, projection_args=projection_args,
+                                periodic=cv_periodic)
         assert target_projection is not None
         progress: ProgressVariable
     else:
         progress = EscapeMetric(
             proj_fn, start_cv, projection_args=projection_args,
             escape_metric=pg_cfg.get("escape_metric", DEFAULT_ESCAPE_METRIC),
+            periodic=cv_periodic,
         )
 
     def convergence(coords: np.ndarray) -> bool:

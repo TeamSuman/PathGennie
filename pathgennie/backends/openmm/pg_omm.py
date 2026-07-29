@@ -39,6 +39,7 @@ class PathGennieMD:
         convergence_fn: Optional[Callable] = None,
         convergence_args: Optional[Dict] = None,
         escape_metric: str = DEFAULT_ESCAPE_METRIC,
+        periodic=None,
         temperature: float = 300.0,
         sigma: float = 0.5,
         seed: Optional[int] = None,
@@ -63,6 +64,7 @@ class PathGennieMD:
         self.converge_fn = convergence_fn
         self.converge_args = convergence_args or {}
         self.escape_metric = escape_metric
+        self.periodic = periodic
         self.temperature = temperature
         self.sigma = sigma
         self.seed = seed
@@ -100,9 +102,11 @@ class PathGennieMD:
             progress = EscapeMetric(
                 self.proj_fn, start_cv, projection_args=self.proj_args,
                 escape_metric=self.escape_metric,
+                periodic=self.periodic,
             )
         else:
-            progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args)
+            progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args,
+                                    periodic=self.periodic)
 
         converge_fn = self.converge_fn
         converge_args = self.converge_args

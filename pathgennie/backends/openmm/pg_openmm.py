@@ -129,7 +129,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     conv_fn = load_function(case_dir, cfg["convergence"]["module"], cfg["convergence"]["function"])
 
     projection_args = {
-        key: value for key, value in cfg.get("projection", {}).items() if key not in {"module", "function", "reference"}
+        key: value for key, value in cfg.get("projection", {}).items() if key not in {"module", "function", "reference", "periodic"}
     }
     convergence_args = {
         key: value for key, value in cfg.get("convergence", {}).items() if key not in {"module", "function"}
@@ -258,6 +258,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         convergence_fn=conv_fn,
         convergence_args=convergence_args,
         escape_metric=pg_cfg.get("escape_metric", DEFAULT_ESCAPE_METRIC),
+        periodic=cfg.get("projection", {}).get("periodic"),
         temperature=temperature,
         sigma=pg_cfg.get("sigma", 0.05),
         seed=pg_cfg.get("seed"),
