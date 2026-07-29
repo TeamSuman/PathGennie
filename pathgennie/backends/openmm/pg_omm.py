@@ -93,6 +93,9 @@ class PathGennieMD:
         engine = OpenMMEngine(
             self.sim, self.temperature,
             n_workers=n_workers, device=self.device, verbose=verbosity >= 1,
+            # A seeded case wants reproducibility, which on a stochastic integrator
+            # costs a Context reinitialise per segment. Unseeded runs skip it.
+            reproducible=self.seed is not None,
         )
         self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)

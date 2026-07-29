@@ -35,6 +35,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   weights — and there is no per-iteration renormalisation to mask the loss. The
   routine now classifies donors/recipients before mutating anything, and declines
   to act (with a message) when the cap is mathematically unsatisfiable.
+- **A seeded run is now reproducible on a stochastic integrator.**
+  `OpenMMEngine.run_segment` set the per-segment seed on an already-built `Context`,
+  where it has no effect — an integrator's RNG stream is created with the Context.
+  Two alanine-dipeptide runs with an identical `seed` were measured diverging from
+  the very first cycle. The engine now reinitialises the Context (preserving state)
+  after re-seeding; the same twin-run test then produces byte-identical metrics.
+  Because `reinitialize()` costs real time per segment it is opt-in via
+  `OpenMMEngine(reproducible=True)`, enabled automatically when the case supplies a
+  `seed`. Unseeded runs are unaffected. This also makes `save_subframes` faithful:
+  the replayed segment now reproduces the one that was actually selected.
+- **Progress metrics respect CV periodicity.** `EscapeMetric`/`TargetMetric` scored
+  with a plain Euclidean norm, which is wrong for dihedral CVs: a (phi, psi) pair
+  straddling the +-180 deg branch cut was scored 345.2 when the true angular distance
+  was 34.3, a 10x inflation that rewarded the sampler for crossing the cut. Declare
+  per-component periods with the new `projection.periodic` key; omitting it preserves
+  the previous behaviour, so distance and PCA CVs are unaffected.
 
 ### Changed
 - **`escape_metric` is honoured by all three backends and shares one default.**
@@ -65,36 +81,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   forwarded to the WE stage, so its walker propagation spreads across GPUs/cores.
 - **Intra-segment frame capture** (`save_subframes`, `subframe_stride`): the
   committed τ1+τ2 segment is replayed to harvest intermediate frames, giving a
-  continuous trajectory instead of one frame per `save_freq` cycles. *Caveat:
-  the replay only reproduces the committed segment for a deterministic
-  integrator — see Known issues.*
+  continuous trajectory instead of one frame per `save_freq` cycles. On a
+  stochastic integrator this is faithful only when the run is seeded (see the
+  reproducibility fix above); the replay costs a second pass over the committed
+  segment, so it roughly doubles the MD work per accepted cycle.
 - **Checkpoint restart and output-overwrite protection** (`checkpoint_freq`,
   `checkpoint_path`, `overwrite`): a run resumes from the last checkpoint, and
   existing outputs are no longer silently clobbered.
 - **Correct trajectory timestamps**: written frames carry real simulation times
   derived from the integrator timestep.
-
-### Known issues
-- **A seeded run is not reproducible on a stochastic integrator.**
-  `OpenMMEngine.run_segment` sets the per-segment seed on an already-created
-  `Context` and nothing calls `reinitialize()`, so the Langevin noise stream is
-  unaffected. Two runs with an identical `seed` diverge from the first cycle.
-  Reproducibility currently holds only for deterministic integrators (e.g.
-  Verlet). Consequently `save_subframes` writes a *different realisation* than
-  the segment that was actually selected.
-- **Progress metrics ignore CV periodicity.** `EscapeMetric` / `TargetMetric`
-  score with a plain Euclidean norm, which is wrong for periodic CVs such as
-  dihedrals: a φ/ψ pair straddling the ±180° branch cut was scored 345.2 when the
-  true angular distance was 34.3 (a 10× inflation). Distance and PCA CVs are
-  unaffected.
-
-### Removed
-- **`MPIExecutor` / `DaskExecutor` and the `[hpc]` extra.** They were
-  non-functional (per-cycle work closing over live engine state cannot be pickled
-  across nodes) and wired to no backend. The supported scaling patterns cover
-  every practical case: single-GPU saturation, a multi-GPU/CPU downstream WE, and
-  independent pathways/replicates as Slurm/PBS array jobs. A work-queue model for
-  a single tightly-coupled multi-node run remains on the roadmap.
 
 ## [1.3.0] — 2026-07-07
 

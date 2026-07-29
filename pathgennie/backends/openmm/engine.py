@@ -31,10 +31,15 @@ round-trip positions, velocities **and periodic box vectors**.
 Reproducibility note: the driver's selection draws and per-segment velocity
 randomisation are seeded, so with a deterministic integrator (e.g. Verlet) a run
 is reproducible regardless of which pooled Context executes a segment (the State
-fully determines it). A stochastic integrator's noise stream is per-Context and
-not reliably re-seedable per segment in OpenMM, so bit-identical trajectories are
-only guaranteed with a deterministic integrator — the same caveat as the
-single-Context engine.
+fully determines it).
+
+A *stochastic* integrator needs more care. Its RNG stream is created together with
+the Context, so ``integrator.setRandomNumberSeed()`` alone has no effect on an
+already-built Context — two runs with an identical seed were measured diverging
+from the very first cycle. Passing ``reproducible=True`` makes the engine
+reinitialise the Context (preserving state) after re-seeding, which does control
+the noise stream. That costs a reinitialise per segment, so it is opt-in and is
+enabled automatically only when the case supplies a ``seed``.
 """
 
 from __future__ import annotations
@@ -137,8 +142,12 @@ class OpenMMEngine:
         device: Optional[int] = None,
         mem_safety: float = 0.15,
         verbose: bool = False,
+        reproducible: bool = False,
     ):
         self.sim = simulation
+        # Re-seed the integrator per segment (needs a Context reinitialise).
+        # Only meaningful when the case asked for a reproducible run.
+        self.reproducible = bool(reproducible)
         self.temperature = temperature * unit.kelvin  # type: ignore
         self._cache: Dict[int, State] = {}
         self._next_id = 0
@@ -233,10 +242,21 @@ class OpenMMEngine:
         try:
             ctx.setState(state)
             integrator = ctx.getIntegrator()
+            seeded = False
             try:
                 integrator.setRandomNumberSeed(int(seed))
-            except AttributeError:
+                seeded = True
+            except AttributeError:  # integrator without an RNG (e.g. Verlet)
                 pass
+            if seeded and self.reproducible:
+                # A stochastic integrator's RNG stream is created together with the
+                # Context, so changing the seed afterwards has no effect until the
+                # Context is reinitialised. Without this a "seeded" run is NOT
+                # reproducible on Langevin dynamics: two runs with an identical seed
+                # were measured diverging from the very first cycle. reinitialize()
+                # is costly, so it is opt-in via `reproducible` (set when the case
+                # supplies a seed) rather than paid on every segment by default.
+                ctx.reinitialize(preserveState=True)
             if randomize_velocities:
                 ctx.setVelocitiesToTemperature(self.temperature, int(seed))
 
