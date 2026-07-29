@@ -35,7 +35,6 @@ output:       { ... }            # optional: output file names
 | `save_freq` | int | 10 | Save a frame every this many cycles. |
 | `target_projection` | list[float] | — | Required when `mode: target`. |
 | `escape_metric` | `distance_from_start` \| `cv0` | `distance_from_start` | Escape scoring. Shared by all three backends since v1.4; previously OpenMM hardcoded `distance_from_start` while AMBER/GROMACS used `cv0`. |
-| `projection.periodic` | list \| omitted | omitted | Per-component CV period (`360.0` for degrees, `null` for non-periodic). Required for dihedral CVs — without it the ±180° branch cut inflates the progress metric ~10×. |
 | `reject_worse_tau2` | bool | false | Keep the sampler if the runner regresses. |
 | `reject_worse_anchor` | bool | false | Keep the old anchor if the candidate regresses. |
 | **`devices`** | list[int] | none | **v0.2.0** — GPU indices to spread the swarm across. |
@@ -79,12 +78,29 @@ pathgennie:
 projection:
   module: phi_psi           # a .py file in the case directory
   function: phi_psi_cv      # called as function(coords, **other_keys)
+  periodic: [360.0, 360.0]  # optional: per-component CV period
   # any additional keys are passed through as kwargs
 ```
 
 `module`/`function` name a Python file in the case directory; the remaining keys
 become keyword arguments. The function maps `(n_atoms, 3)` Angstrom coordinates
 to a CV vector.
+
+### `periodic` — required for dihedral CVs
+
+| Value | Meaning |
+|---|---|
+| omitted | every component non-periodic (previous behaviour) |
+| `360.0` | that component is an angle in degrees |
+| `6.283185` | that component is an angle in radians |
+| `null` | that component is non-periodic (distance, PCA projection, …) |
+
+`periodic` is consumed by the progress metric, not passed to your projection
+function. Without it, two angles either side of the ±180° branch cut are scored as
+~360° apart when they are adjacent: on a real alanine-dipeptide run a ψ change of
+16.1° was scored as 343.9°, inflating the metric ~10× and rewarding the sampler for
+crossing the cut rather than making progress. Mixed spaces are supported, e.g.
+`periodic: [360.0, null]` for an angle plus a distance.
 
 ## `convergence` block
 
@@ -139,7 +155,9 @@ openmm:
   # system/topology files and platform settings (see examples/)
 ```
 
-> **Downstream stages (`weighted_ensemble` / `opes`).** A `downstream` field
-> exists on the run profile, but the backend `run()` loaders do **not** yet
-> auto-launch a downstream stage from `input.yaml`. Run Weighted Ensemble through
-> the Python API — see [weighted-ensemble.md](weighted-ensemble.md).
+> **Downstream stages (`weighted_ensemble` / `opes`).** Set
+> `pathgennie.downstream: weighted_ensemble` plus a top-level block of that name and
+> the backend `run()` loaders launch the stage automatically after path discovery,
+> writing `free_energy.csv` (and `rate_constants.json` when recycling is enabled).
+> The Python API remains available — see
+> [weighted-ensemble.md](weighted-ensemble.md).
