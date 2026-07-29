@@ -367,7 +367,7 @@ if __name__ == '__main__':
     config = {
         'n_gpus': 2,
         'runner_class': OpenMMRunner,
-        'enable_cleaning': True,
+        'enable_cleaning': False,   # results were produced WITHOUT cleaning; debugging aid only
         'clean_threshold': 75.0,
         'source_bin_indices': np.array([[0], [1], [2], [3]]),
         'temperature': 300.0,

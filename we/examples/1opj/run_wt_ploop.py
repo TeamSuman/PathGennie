@@ -375,7 +375,7 @@ if __name__ == '__main__':
             'temperature': 300.0,
             'platform': 'CUDA'
         },
-        'enable_cleaning': True,
+        'enable_cleaning': False,   # results were produced WITHOUT cleaning; debugging aid only
         'clean_threshold': 75.0,
         'source_bin_indices': np.array([[0], [1], [2], [3], [4], [5]]),
         'temperature': 300.0,
@@ -383,8 +383,8 @@ if __name__ == '__main__':
         'protein_idx' : protein_ca_indices,
         'ligand_idx' : ligand_indices,
         'n_walkers_per_bin': 3,
-        'dt': 0.002, # Set to match the runner's dt_ps
-        'n_steps_per_tau': 10000, # Adjusted to keep TAU = 20ps (0.002 * 10000)
+        'dt': 0.002,          # MUST match runner_kwargs['dt_ps'] (integrator timestep)
+        'n_steps_per_tau': 10000,  # tau = dt * n_steps_per_tau = 20 ps (see docs/weighted-ensemble.md)
         'n_iterations': 50000,
         'flux_file': 'wt_flux_ploop_algebric_clean1.txt',
         'bin_file': 'wt_bin_ploop_algebric_clean1.txt',
