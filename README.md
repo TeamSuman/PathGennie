@@ -242,9 +242,14 @@ The file has four main parts:
 * `temperature` (float): Simulation temperature in Kelvin (default: 300.0).
 * `verbosity` (int): Logging detail level: `0` (silent), `1` (minimal), `2` (verbose).
 * `target_projection` (list of float, Target Mode only): Target CV coordinates.
-* `escape_metric` (str, Escape Mode only): `"cv0"` (maximise the first CV
-  component; default for AMBER/GROMACS) or `"distance_from_start"` (maximise
-  Euclidean distance from the start CV).
+* `escape_metric` (str, Escape Mode only): `"distance_from_start"` (maximise the
+  Euclidean distance from the start CV — the default, and the objective the method
+  is published with) or `"cv0"` (legacy: maximise only the first CV component).
+  All three backends honour this key and share the same default. Before v1.4 the
+  backends disagreed — OpenMM always used `distance_from_start` while AMBER and
+  GROMACS defaulted to `cv0` — so an identical `input.yaml` optimised a different
+  quantity depending on the engine. Set `escape_metric: cv0` explicitly to restore
+  the old AMBER/GROMACS behaviour.
 * `seed` (int, optional): Master RNG seed for the selection draw and per-segment
   velocity randomisation. Set it for reproducible runs — the seed → trial
   mapping is deterministic even across the multi-GPU thread pool.

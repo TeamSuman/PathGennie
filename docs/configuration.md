@@ -34,7 +34,7 @@ output:       { ... }            # optional: output file names
 | `temperature` | float | 300 | MD temperature (K). |
 | `save_freq` | int | 10 | Save a frame every this many cycles. |
 | `target_projection` | list[float] | — | Required when `mode: target`. |
-| `escape_metric` | `cv0` \| `distance_from_start` | `cv0` | Escape scoring. |
+| `escape_metric` | `distance_from_start` \| `cv0` | `distance_from_start` | Escape scoring. Shared by all three backends since v1.4; previously OpenMM hardcoded `distance_from_start` while AMBER/GROMACS used `cv0`. |
 | `reject_worse_tau2` | bool | false | Keep the sampler if the runner regresses. |
 | `reject_worse_anchor` | bool | false | Keep the old anchor if the candidate regresses. |
 | **`devices`** | list[int] | none | **v0.2.0** — GPU indices to spread the swarm across. |

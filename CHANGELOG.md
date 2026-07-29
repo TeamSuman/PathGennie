@@ -6,16 +6,87 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Every re-run of the AMBER and GROMACS backends crashed (release-blocking).**
+  `pg_amber.run` and `pg_gmx.run` import `shutil` at module scope and then again
+  *inside* the function, which made `shutil` a function-local name for the whole
+  body — so the earlier `shutil.rmtree(scratch_dir)` raised
+  `UnboundLocalError: cannot access local variable 'shutil'` whenever a scratch
+  directory already existed. The first run into a clean directory worked, so this
+  only bit on a second run, a resume, or a restart after a crash — precisely the
+  case checkpoint/restart exists to serve. These entrypoints had no test coverage;
+  `tests/test_backend_rerun.py` now covers the re-run path for both backends.
+- **Mass-weighted collective variables silently became unweighted centroids.**
+  A `.gro`/`.pdb` metadata file carries no masses, so `read_gro_topology_info` /
+  `read_pdb_topology_info` filled in `np.ones(...)`, and `enrich_args` injected
+  those into the user's CV whenever `group_a_resname`/`group_b_resname` were set.
+  A centre-of-mass CV therefore degraded to an arithmetic centroid with no error
+  and no warning (measured: 3.5193 Å vs a true 3.7278 Å on the OAMe-G2 host–guest
+  COM–COM distance — a 5.6 % systematic bias). AMBER was unaffected because
+  `parse_prmtop` reads the real `%FLAG MASS`. New
+  `read_masses_from_topology()` recovers real masses from the topology (ParmEd,
+  then MDAnalysis); the GROMACS and OpenMM backends use it, and `enrich_args` now
+  **raises** rather than passing placeholder masses to a mass-weighted CV.
+- **Weighted Ensemble destroyed probability weight.**
+  `redistribute_excess_weight` stripped each walker's excess above `cap` *before*
+  checking that a recipient existed, so when every walker was above the cap the
+  excess was discarded (measured: 1.0 → 0.3, a 70 % loss). WE is unbiased only
+  because resampling conserves total weight — a rate constant is a sum of walker
+  weights — and there is no per-iteration renormalisation to mask the loss. The
+  routine now classifies donors/recipients before mutating anything, and declines
+  to act (with a message) when the cap is mathematically unsatisfiable.
+
+### Changed
+- **`escape_metric` is honoured by all three backends and shares one default.**
+  OpenMM previously hardcoded `distance_from_start` while AMBER and GROMACS
+  defaulted to the legacy `cv0`, so an identical `input.yaml` optimised a
+  different quantity depending on the engine. The shared default is now
+  `DEFAULT_ESCAPE_METRIC = "distance_from_start"`, the objective the method is
+  published with. **This changes AMBER/GROMACS behaviour** — set
+  `escape_metric: cv0` explicitly to restore the previous default. The dead
+  `escape_direction` argument was removed from `PathGennieMD`.
+- **Weighted Ensemble resampling is reproducible.** `Resampler` and the survivor
+  scheme drew from NumPy's *global* RNG, so a WE run could not be reproduced even
+  from identical inputs. Both now use a dedicated `Generator` seeded from a new
+  `seed` config key; omitting it preserves the previous non-deterministic
+  behaviour.
+- **SPIB on-the-fly CV** caches features incrementally (was re-featurizing the
+  whole buffer each refresh, ~O(N²)) with an optional bounded sliding window.
+- **`we/examples/1opj` scripts** no longer enable walker cleaning by default. The
+  published results were produced *without* it (it was added later to debug a poor
+  initial reference path), so the committed scripts ran a different algorithm from
+  the one behind the paper.
+
 ### Added
 - **Single-GPU saturation (OpenMM).** `OpenMMEngine` backs a pool of concurrent
   Contexts on one card; `workers_per_device` (an int, or `auto` sized from cores
   and free GPU memory) runs that many swarm walkers at once instead of serially.
 - **Downstream Weighted Ensemble parallelism.** The backend device pool is
   forwarded to the WE stage, so its walker propagation spreads across GPUs/cores.
+- **Intra-segment frame capture** (`save_subframes`, `subframe_stride`): the
+  committed τ1+τ2 segment is replayed to harvest intermediate frames, giving a
+  continuous trajectory instead of one frame per `save_freq` cycles. *Caveat:
+  the replay only reproduces the committed segment for a deterministic
+  integrator — see Known issues.*
+- **Checkpoint restart and output-overwrite protection** (`checkpoint_freq`,
+  `checkpoint_path`, `overwrite`): a run resumes from the last checkpoint, and
+  existing outputs are no longer silently clobbered.
+- **Correct trajectory timestamps**: written frames carry real simulation times
+  derived from the integrator timestep.
 
-### Changed
-- **SPIB on-the-fly CV** caches features incrementally (was re-featurizing the
-  whole buffer each refresh, ~O(N²)) with an optional bounded sliding window.
+### Known issues
+- **A seeded run is not reproducible on a stochastic integrator.**
+  `OpenMMEngine.run_segment` sets the per-segment seed on an already-created
+  `Context` and nothing calls `reinitialize()`, so the Langevin noise stream is
+  unaffected. Two runs with an identical `seed` diverge from the first cycle.
+  Reproducibility currently holds only for deterministic integrators (e.g.
+  Verlet). Consequently `save_subframes` writes a *different realisation* than
+  the segment that was actually selected.
+- **Progress metrics ignore CV periodicity.** `EscapeMetric` / `TargetMetric`
+  score with a plain Euclidean norm, which is wrong for periodic CVs such as
+  dihedrals: a φ/ψ pair straddling the ±180° branch cut was scored 345.2 when the
+  true angular distance was 34.3 (a 10× inflation). Distance and PCA CVs are
+  unaffected.
 
 ### Removed
 - **`MPIExecutor` / `DaskExecutor` and the `[hpc]` extra.** They were
