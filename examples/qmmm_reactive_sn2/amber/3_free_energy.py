@@ -161,27 +161,51 @@ def main() -> int:
     for s_val, f_val in zip(centers[ok], fe[ok]):
         print(f"{s_val:>7.3f} {f_val:>14.2f}")
 
-    # Distinguish "never reached" from "reached only while the seeded walkers were
-    # falling off the barrier". The second is the barrier-crossing failure and is
-    # otherwise silent: WE can only split walkers that *reach* a bin, so once a
-    # barrier-top bin empties there is no mechanism to repopulate it.
+    # WE climbs a barrier by a ratchet: a walker that strays into the next bin is
+    # split there, so its descendants are more numerous and probability creeps
+    # upward. Emptying a bin is normal -- the ratchet refills it. What matters is
+    # whether the two sides ever MEET. If a run of bins is never entered from
+    # either side after burn-in, the ratchet stalled and everything above the
+    # highest reached bin is unmeasured.
     occupied = trace > 0
-    abandoned = [b for b in range(trace.shape[1])
-                 if occupied[:n_burn, b].any() and not occupied[n_burn:, b].any()]
+    live = np.flatnonzero(occupied[n_burn:].any(axis=0))   # reached post-burn-in
     unreached = [b for b in range(trace.shape[1]) if not occupied[:, b].any()]
-    if abandoned:
-        last = {b: int(np.flatnonzero(occupied[:, b])[-1]) for b in abandoned}
-        print(f"\n{len(abandoned)} bin(s) were populated ONLY by the initial seeding and "
-              "then abandoned:")
-        for b in abandoned:
-            print(f"    s = {centers[b]:.3f}  last occupied at iteration {last[b]}")
-        print("  These are almost certainly the barrier top. Plain WE cannot repopulate "
-              "an empty\n  bin, so the reported maximum is a LOWER BOUND on the barrier, "
-              "not the barrier.\n  Use recycling (steady-state WE), or bias along s "
-              "(umbrella/OPES), to hold walkers there.")
+    gap: list[int] = []
+    if live.size:
+        breaks = np.flatnonzero(np.diff(live) > 1)
+        if breaks.size:                     # widest unbridged stretch
+            k = int(breaks[np.argmax(np.diff(live)[breaks])])
+            gap = list(range(int(live[k]) + 1, int(live[k + 1])))
+
+    if gap:
+        lo, hi = gap[0] - 1, gap[-1] + 1
+        refills = {b: int(np.sum(np.diff(np.flatnonzero(occupied[:, b])) > 1))
+                   for b in (lo, hi) if occupied[:, b].any()}
+        print(f"\nThe WE ratchet stalled: bins s = {centers[gap[0]]:.3f}–{centers[gap[-1]]:.3f} "
+              f"({len(gap)} bins) were never\nentered from either side after burn-in.")
+        print(f"  reached from below: up to s = {centers[lo]:.3f}"
+              f"   (that bin emptied and refilled {refills.get(lo, 0)}× — the ratchet works)")
+        print(f"  reached from above: down to s = {centers[hi]:.3f}"
+              f"   (refilled {refills.get(hi, 0)}×)")
+        print("  So this is a STALL, not an inability to repopulate: the climb rate falls\n"
+              "  off exponentially with height and ran out of budget. The reported maximum\n"
+              "  is a LOWER BOUND on the barrier.\n"
+              "  Remedies: more walkers per bin, finer bins across the stalled region, a\n"
+              "  longer tau, or a bias along s (umbrella/OPES).")
     if unreached:
         print(f"\n{len(unreached)} bin(s) never reached at all -- widen the seeding or "
               "lengthen the run.")
+
+    # Adjacent-bin occupancy ratios should follow exp(-dF/kT) wherever sampling is
+    # adequate. Printing them shows whether WE is behaving correctly (it usually
+    # is) as distinct from having enough budget (often it does not).
+    w = trace[n_burn:].sum(axis=0)
+    live_pairs = [(b, b + 1) for b in range(len(w) - 1) if w[b] > 0 and w[b + 1] > 0]
+    if live_pairs:
+        print("\nper-bin occupancy ratios (should track exp(-dF/kT) where sampled)")
+        for a, b in live_pairs:
+            print(f"  s {centers[a]:.3f} -> {centers[b]:.3f}   ratio {w[b] / w[a]:8.4f}"
+                  f"   implied dF {-kT * np.log(w[b] / w[a]):+6.2f} kcal/mol")
 
     # Convergence evidence, not a convergence claim: re-estimate over the second
     # half, third quarter, and final quarter. If those agree the profile has
@@ -223,18 +247,18 @@ def main() -> int:
               "error in this profile")
 
     worst = max([d for d in drifts if np.isfinite(d)], default=float("nan"))
-    label = "apparent barrier" if not abandoned else "highest sampled point (LOWER BOUND)"
+    label = "highest sampled point (LOWER BOUND)" if gap else "apparent barrier"
     print(f"\n{label}: {fe[ok].max():.2f} kcal/mol "
           f"(WE free energies are already shifted to min = 0)")
-    if np.isfinite(worst) and worst < 0.5 and ok.all() and not abandoned:
+    if np.isfinite(worst) and worst < 0.5 and ok.all() and not gap:
         print(f"Windows agree to {worst:.2f} kcal/mol and every bin stayed populated: "
               "the profile has stopped moving.")
     else:
         reasons = []
         if not (np.isfinite(worst) and worst < 0.5):
             reasons.append(f"windows disagree by up to {worst:.2f} kcal/mol")
-        if abandoned:
-            reasons.append(f"{len(abandoned)} bin(s) emptied after seeding (barrier unsampled)")
+        if gap:
+            reasons.append(f"the ratchet stalled across {len(gap)} bin(s); barrier unsampled")
         if unreached:
             reasons.append(f"{len(unreached)} bin(s) never reached")
         print("NOT CONVERGED: " + "; ".join(reasons)

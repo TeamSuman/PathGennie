@@ -110,20 +110,33 @@ double well:
 The wells agree to **0.01 kcal/mol** — a strong check, since an identity reaction must be exactly
 symmetric.
 
-**But the seven bins spanning the barrier top are empty, and 5.40 kcal/mol is a lower bound, not
-the barrier.** The occupancy trace shows why: those bins were populated *only* during the first
-~68 iterations, by the initial seeding, and then abandoned. **Plain WE cannot repopulate an empty
-bin** — it splits walkers that reach a bin, and nothing reached these again. The seeded walkers
-simply fell off the barrier into the wells.
+**But the seven bins spanning the barrier top hold no weight, and 5.40 kcal/mol is a lower bound,
+not the barrier.**
 
-The script detects this and says so, distinguishing "abandoned after seeding" (the barrier-crossing
-failure, otherwise silent) from "never reached at all".
+WE climbs a barrier by a **ratchet**: a walker straying into the next bin up is split there, so its
+descendants are more numerous and probability creeps upward. A bin going empty is normal — the
+ratchet refills it. What matters is whether the two sides **meet**. Here they did not: the climb
+reached s = 0.281 from the reactant side and s = 0.781 from the product side, leaving seven bins
+unbridged.
 
-To actually measure the barrier you need something that *holds* walkers at the top:
+The ratchet was working — the bin at s = 0.094 emptied and refilled **191 times**, and bins further
+up refilled 46, 13 and 9 times, with re-entries as late as iteration 2291 of 2500. It **stalled**
+rather than being unable to repopulate. WE is also behaving correctly while it does: adjacent-bin
+occupancy ratios are 0.211, 0.196, 0.263 → ΔF = +0.93, +0.97, +0.80 kcal/mol, i.e. textbook
+exp(−ΔF/kT). The empty bins simply have tiny equilibrium weight, and the climb rate falls off
+exponentially with height.
 
-- **recycling** (`recycle=True` with `source_cv`/`target_cv`) for a steady-state rate,
-- **a bias along `s`** — umbrella sampling or OPES — for the full profile,
-- or far more sampling, which is the expensive way to do the same thing.
+The script detects the unbridged gap, reports how often the boundary bins refilled, prints the
+per-bin ratios, and relabels the maximum as a lower bound.
+
+To reach the top:
+
+- **more walkers per bin, or finer bins across the stalled region** — the standard WE remedies,
+  since the problem is climb *rate*, not a structural impossibility;
+- **a longer τ** — 50 fs gives each iteration little chance to advance a bin;
+- **a bias along `s`** (umbrella sampling or OPES), which sidesteps the climb entirely;
+- **recycling** (`recycle=True` with `source_cv`/`target_cv`) if a steady-state *rate* is what you
+  want rather than a profile.
 
 **Use the symmetry as an error bar.** For this identity reaction, deviation from mirror symmetry
 about `s = 0.5` is pure sampling error. It grows with height — 0.01, 0.39, 0.81, 0.99 kcal/mol —
