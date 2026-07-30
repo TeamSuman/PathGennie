@@ -44,13 +44,53 @@ ens = build_path_ensemble(traj, metrics, handles=handles, cv_fn=lambda c: c[0, 1
 
 # 2) run WE along the y coordinate
 stage = WeightedEnsembleStage(cv_fn=lambda c: c[0, 1], tau_steps=10,
-                              n_iterations=400, n_bins=16, target_count=6, seed=1, kT=2.0)
+                              n_iterations=400, n_bins=16, target_count=6, seed=1,
+                              kT=2.0, burn_in=0.3)
 result = stage.run(ens, engine)
 
 result.free_energy            # F over result.metadata["bin_centers"]
 result.weights                # final walker weights (sum to 1)
-result.metadata["weight_trace"]  # total weight per iteration (== 1)
+result.metadata["weight_trace"]      # total weight per iteration (== 1)
+result.metadata["bin_weight_trace"]  # (n_iterations, n_bins) occupancy
 ```
+
+### Discard the transient — `burn_in`
+
+WE starts from whatever seeded it. A common and sensible choice is one walker per
+bin, but that is a *uniform* distribution: maximally unlike the Boltzmann
+distribution being estimated. Averaging bin occupancy from iteration 0 therefore
+mixes the relaxation away from that artificial start into the answer, **flattening
+the profile and biasing barriers low**.
+
+`burn_in` discards leading iterations — an `int` counts them, a `float` in
+`(0, 1)` is a fraction of the run. It defaults to `0` for backwards
+compatibility, but 0 is rarely the right choice.
+
+Do not guess the value: `metadata["bin_weight_trace"]` records per-iteration,
+per-bin occupancy, so you can re-estimate over later and later windows and take
+the point beyond which the profile stops moving — without re-running anything.
+
+```python
+trace, kT = result.metadata["bin_weight_trace"], 2.0
+
+def profile(window):
+    p = window.sum(axis=0); p = p / p.sum()
+    with np.errstate(divide="ignore"):
+        f = -kT * np.log(p)
+    return f - f[np.isfinite(f)].min()
+
+second_half   = profile(trace[len(trace) // 2:])
+final_quarter = profile(trace[3 * len(trace) // 4:])
+# agreement between these is evidence of convergence; disagreement means
+# the run is too short, whatever the nominal barrier says
+```
+
+`metadata["flux_trace"]` is the per-iteration flux, and rate constants use the
+same burn-in — a rate is a steady-state quantity, so the transient contaminates it
+in exactly the same way.
+
+`examples/qmmm_reactive_sn2/amber/3_free_energy.py` implements this check and
+refuses to endorse a barrier when the windows disagree.
 
 ### Rate constants (recycling)
 

@@ -7,6 +7,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Weighted Ensemble free energies and rates included the startup transient.**
+  Bin occupancy was averaged from iteration 0, so the relaxation away from the
+  seeded initial distribution was mixed into the estimate. Seeding is commonly
+  one walker per bin — a *uniform* distribution, maximally unlike the Boltzmann
+  one being estimated — so this flattened profiles and biased barriers low. Only
+  the *total* weight was traced, so it could not be corrected after the fact
+  either. `WeightedEnsembleStage` gains `burn_in` (an `int` count or a `float`
+  fraction of the run; default `0` preserves the old behaviour) applied to both
+  the free energy and the rate, and now records per-iteration, per-bin occupancy
+  in `metadata["bin_weight_trace"]` plus `metadata["flux_trace"]` — so a burn-in
+  can be chosen, and convergence checked by comparing windows, without re-running.
+  Covered by `tests/test_we_burn_in.py`; mutation-verified (neutralising the
+  burn-in makes 4 of its 8 tests fail).
 - **Weighted Ensemble on AMBER died on its first segment.** `create_handle`
   writes an rst7 containing coordinates only — no velocity block — but the WE
   stage seeds walkers from raw frames through exactly that call and defaults to

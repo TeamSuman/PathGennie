@@ -119,6 +119,19 @@ class WeightedEnsembleStage:
     ``cv_fn(coords) -> float`` maps an ``(n_atoms, 3)`` configuration to the scalar
     progress coordinate WE bins along (reuse the discovery projection; reduce a
     vector CV to one component or a norm).
+
+    ``burn_in`` discards leading iterations from the free-energy and rate
+    estimates: an ``int`` counts iterations, a ``float`` in ``(0, 1)`` is a
+    fraction of the run. It defaults to ``0`` (average everything, the historical
+    behaviour), but **0 is rarely the right choice**. WE starts from whatever
+    seeded it, frequently one walker per bin, which is a uniform distribution --
+    maximally unlike the Boltzmann distribution being estimated. Averaging that
+    transient in flattens the profile and biases barriers low.
+
+    Pick a value by inspecting ``metadata["bin_weight_trace"]`` (per-iteration,
+    per-bin occupancy): re-estimate over later and later windows and use the point
+    beyond which the profile stops moving. That trace makes the choice checkable
+    after the fact, without re-running.
     """
 
     def __init__(
@@ -138,6 +151,7 @@ class WeightedEnsembleStage:
         seed: int = 0,
         timestep_ps: Optional[float] = None,
         kT: float = 1.0,
+        burn_in: float = 0,
     ):
         self.cv_fn = cv_fn
         self.tau_steps = int(tau_steps)
@@ -153,8 +167,22 @@ class WeightedEnsembleStage:
         self.seed = int(seed)
         self.timestep_ps = timestep_ps
         self.kT = float(kT)
+        self.burn_in = burn_in
         if self.recycle and (self.source_cv is None or self.target_cv is None):
             raise ValueError("recycle=True requires both source_cv and target_cv")
+        if isinstance(burn_in, float) and not 0.0 <= burn_in < 1.0 and burn_in != int(burn_in):
+            raise ValueError(f"fractional burn_in must be in [0, 1), got {burn_in}")
+        if burn_in < 0:
+            raise ValueError(f"burn_in must be non-negative, got {burn_in}")
+
+    def _burn_in_iterations(self) -> int:
+        """Resolve ``burn_in`` to a count. A float in [0, 1) is a fraction."""
+        if isinstance(self.burn_in, float) and 0.0 < self.burn_in < 1.0:
+            n = int(round(self.burn_in * self.n_iterations))
+        else:
+            n = int(self.burn_in)
+        # Never discard everything -- an empty estimator is worse than a biased one.
+        return min(n, max(0, self.n_iterations - 1))
 
     # -- seeding -------------------------------------------------------------
     def _seed_handles(self, ensemble: PathEnsemble, engine: Engine) -> List[Handle]:
@@ -212,11 +240,13 @@ class WeightedEnsembleStage:
             walkers.append(Walker(handle=handle, weight=w0, bin=binner.bin_index(cv), cv=cv))
         walkers = self._resample_all(walkers, binner, rng, clone, release)
 
-        bin_weight = np.zeros(binner.n_bins, dtype=float)
+        # Per-iteration occupancy, not just the running total: without it neither
+        # burn-in nor any post-hoc convergence check is possible.
+        bin_weight_trace = np.zeros((self.n_iterations, binner.n_bins), dtype=float)
+        flux_trace = np.zeros(self.n_iterations, dtype=float)
         weight_trace: List[float] = []
-        flux_total = 0.0
 
-        for _it in range(self.n_iterations):
+        for it in range(self.n_iterations):
             seg_seeds = [int(rng.integers(1, 2_147_483_647)) for _ in walkers]
 
             def worker(item, device):
@@ -243,19 +273,24 @@ class WeightedEnsembleStage:
                 for walker in walkers:
                     crossed = walker.cv >= self.target_cv if forward else walker.cv <= self.target_cv
                     if crossed:
-                        flux_total += walker.weight
+                        flux_trace[it] += walker.weight
                         engine.release(walker.handle)
                         walker.handle = clone(source_handle)
                         walker.cv = self._cv(engine, walker.handle)
                         walker.bin = binner.bin_index(walker.cv)
 
             for walker in walkers:
-                bin_weight[walker.bin] += walker.weight
+                bin_weight_trace[it, walker.bin] += walker.weight
             weight_trace.append(float(sum(w.weight for w in walkers)))
 
             walkers = self._resample_all(walkers, binner, rng, clone, release)
 
-        # Free energy from time-averaged occupancy.
+        # Free energy from time-averaged occupancy, discarding the transient. The
+        # initial walker distribution is whatever seeded the run -- often uniform
+        # across bins, which is maximally unlike the Boltzmann distribution being
+        # estimated -- so averaging from iteration 0 flattens the profile.
+        n_burn = self._burn_in_iterations()
+        bin_weight = bin_weight_trace[n_burn:].sum(axis=0)
         total = bin_weight.sum()
         prob = bin_weight / total if total > 0 else bin_weight
         with np.errstate(divide="ignore"):
@@ -266,7 +301,9 @@ class WeightedEnsembleStage:
 
         rate_constants = None
         if self.recycle:
-            flux_per_iter = flux_total / max(1, self.n_iterations)
+            # The rate is a steady-state quantity; the same transient contaminates it.
+            post = flux_trace[n_burn:]
+            flux_per_iter = float(post.sum()) / max(1, post.size)
             if self.timestep_ps is not None:
                 tau_time = self.tau_steps * self.timestep_ps
                 rate = flux_per_iter / tau_time if tau_time > 0 else float("nan")
@@ -285,6 +322,11 @@ class WeightedEnsembleStage:
                 "bin_centers": binner.centers,
                 "bin_probability": prob,
                 "weight_trace": np.asarray(weight_trace),
+                # (n_iterations, n_bins) -- re-estimate with any burn-in, or check
+                # convergence by comparing successive windows, without re-running.
+                "bin_weight_trace": bin_weight_trace,
+                "flux_trace": flux_trace,
+                "burn_in": n_burn,
                 "n_walkers": len(walkers),
             },
         )

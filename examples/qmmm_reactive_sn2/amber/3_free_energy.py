@@ -71,11 +71,16 @@ def main() -> int:
     p.add_argument("--bins", type=int, default=16)
     p.add_argument("--tau-steps", type=int, default=100)   # 50 fs at dt = 0.5 fs
     p.add_argument("--temperature", type=float, default=300.0)
+    p.add_argument("--burn-in", type=float, default=0.3,
+                   help="fraction (<1) or count of leading iterations to discard")
+    p.add_argument("--workers", type=int, default=8,
+                   help="concurrent sander processes; one CPU core each")
     p.add_argument("--outdir", type=Path, default=HERE / "results" / "free_energy")
     p.add_argument("--sander", default="sander")
     args = p.parse_args()
 
     from pathgennie.backends.amber.engine import CoreAmberEngine
+    from pathgennie.core.parallel import ThreadDevicePool
     from pathgennie.sampling import WeightedEnsembleStage, build_path_ensemble
     from pathrefinement.pathcv import PathCV
 
@@ -124,13 +129,32 @@ def main() -> int:
         target_count=args.walkers_per_bin,
         seed=7,
         kT=KB_KCAL * args.temperature,
+        # Seeding puts one walker per bin -- a uniform distribution, which is the
+        # opposite of the Boltzmann one being estimated. Averaging that transient
+        # in flattens the profile and biases the barrier low.
+        burn_in=args.burn_in,
+        executor=ThreadDevicePool(devices=None, workers_per_device=args.workers),
     )
     result = stage.run(ensemble, engine)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     fe = np.asarray(result.free_energy, dtype=float)
     centers = np.asarray(result.metadata["bin_centers"], dtype=float)
-    np.savez(args.outdir / "fes_along_s.npz", free_energy=fe, s=centers)
+    trace = np.asarray(result.metadata["bin_weight_trace"], dtype=float)
+    n_burn = int(result.metadata["burn_in"])
+    np.savez(args.outdir / "fes_along_s.npz", free_energy=fe, s=centers,
+             bin_weight_trace=trace, burn_in=n_burn, kT=KB_KCAL * args.temperature)
+
+    kT = KB_KCAL * args.temperature
+
+    def profile(window: np.ndarray) -> np.ndarray:
+        """Free energy from an arbitrary slice of iterations."""
+        w = window.sum(axis=0)
+        tot = w.sum()
+        with np.errstate(divide="ignore"):
+            f = -kT * np.log(w / tot if tot > 0 else w)
+        good = f[np.isfinite(f)]
+        return f - good.min() if good.size else f
 
     ok = np.isfinite(fe)
     print(f"\n{'s':>7} {'F (kcal/mol)':>14}")
@@ -139,9 +163,39 @@ def main() -> int:
     if ok.sum() < len(fe):
         print(f"\n{len(fe) - int(ok.sum())} of {len(fe)} bins never visited -- "
               "increase --iterations or --walkers-per-bin.")
+
+    # Convergence evidence, not a convergence claim: re-estimate over the second
+    # half, third quarter, and final quarter. If those agree the profile has
+    # stopped moving; if they do not, the run is too short and says so.
+    n_it = trace.shape[0]
+    windows = {
+        "2nd half   ": trace[n_it // 2:],
+        "3rd quarter": trace[n_it // 2: 3 * n_it // 4],
+        "4th quarter": trace[3 * n_it // 4:],
+    }
+    print(f"\nconvergence check (burn-in used: {n_burn}/{n_it} iterations)")
+    print(f"  {'window':<12} {'barrier':>9}  max |dF| vs full estimate")
+    drifts = []
+    for name, win in windows.items():
+        if win.size == 0:
+            continue
+        f = profile(win)
+        both = np.isfinite(f) & ok
+        drift = float(np.abs(f[both] - fe[both]).max()) if both.any() else float("nan")
+        drifts.append(drift)
+        bar = float(f[np.isfinite(f)].max()) if np.isfinite(f).any() else float("nan")
+        print(f"  {name:<12} {bar:>9.2f}  {drift:>9.2f} kcal/mol")
+
+    worst = max([d for d in drifts if np.isfinite(d)], default=float("nan"))
     print(f"\napparent barrier: {fe[ok].max():.2f} kcal/mol "
           f"(WE free energies are already shifted to min = 0)")
-    print("Demonstration budget -- verify convergence before quoting this.")
+    if np.isfinite(worst) and worst < 0.5 and ok.all():
+        print(f"Windows agree to {worst:.2f} kcal/mol and every bin was visited: "
+              "the profile has stopped moving.")
+    else:
+        print(f"NOT CONVERGED: windows disagree by up to {worst:.2f} kcal/mol"
+              + ("" if ok.all() else f", and {int((~ok).sum())} bin(s) were never visited")
+              + ". Do not quote this number; lengthen the run.")
     print(f"written to {args.outdir}")
     return 0
 
