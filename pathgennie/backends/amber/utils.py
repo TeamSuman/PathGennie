@@ -80,7 +80,11 @@ def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
 
 
 
-def read_prmtop_flag(path: Path, flag: str) -> list[str]:
+def read_prmtop_flag(path: str | Path, flag: str) -> list[str]:
+    # Accept a plain string like the sibling readers do (read_rst7_coords already
+    # coerces). Without this, passing a str raised a bare
+    # AttributeError: 'str' object has no attribute 'read_text'.
+    path = Path(path)
     lines = path.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):
         if line.strip() == f"%FLAG {flag}":
@@ -93,7 +97,7 @@ def read_prmtop_flag(path: Path, flag: str) -> list[str]:
     raise KeyError(f"Missing %FLAG {flag} in {path}")
 
 
-def parse_prmtop(path: Path) -> dict[str, object]:
+def parse_prmtop(path: str | Path) -> dict[str, object]:
     atom_name_text = "".join(read_prmtop_flag(path, "ATOM_NAME"))
     residue_label_text = "".join(read_prmtop_flag(path, "RESIDUE_LABEL"))
     residue_pointer_lines = read_prmtop_flag(path, "RESIDUE_POINTER")

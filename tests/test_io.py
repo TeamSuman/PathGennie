@@ -142,3 +142,24 @@ def test_overwrite_check_logic(tmp_path):
             names = ", ".join(str(p) for p in existing)
             raise FileExistsError(f"Output file(s) already exist: {names}")
 
+
+
+def test_prmtop_readers_accept_str_paths():
+    """parse_prmtop / read_prmtop_flag must accept a str, like the other readers.
+
+    read_rst7_coords already coerced with Path(path), but the prmtop readers did
+    not, so a plain string raised a bare
+    ``AttributeError: 'str' object has no attribute 'read_text'`` far from the
+    call site. Analysis scripts naturally pass strings.
+    """
+    from pathgennie.backends.amber.utils import parse_prmtop, read_prmtop_flag
+
+    if not PRMTOP.exists():
+        import pytest
+        pytest.skip("example prmtop not available")
+
+    prmtop = PRMTOP
+    from_path = parse_prmtop(prmtop)
+    from_str = parse_prmtop(str(prmtop))
+    assert from_str["atom_names"] == from_path["atom_names"]
+    assert len(read_prmtop_flag(str(prmtop), "ATOM_NAME")) > 0
