@@ -94,9 +94,41 @@ profile needs no reweighting.
 One walker is seeded per `s` bin from the stage-1 frames. This matters: WE only splits walkers that
 *reach* a bin, so a run started entirely in the reactant well spends its whole budget crawling out.
 
-**The default budget is a demonstration, not a converged barrier.** 24 iterations × 8 walkers/bin ×
-50 fs is roughly 20 minutes on one core and will show the shape of the profile; treat any number
-from it as provisional until you have checked it against a longer run.
+`burn_in` defaults to 30 % here. Seeding one walker per bin is a *uniform* distribution — the
+opposite of the Boltzmann one being estimated — so averaging from iteration 0 flattens the profile
+and biases the barrier low.
+
+### What a real run actually shows, and the limit you will hit
+
+2500 iterations (125 ps/walker, 16 bins × 6 walkers, ~15 min on 8 cores) gives a clean symmetric
+double well:
+
+| s | 0.031 | 0.094 | 0.156 | 0.219 | 0.281 | … | 0.781 | 0.844 | 0.906 | 0.969 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| F (kcal/mol) | 0.00 | 2.51 | 3.44 | 4.41 | 5.21 | **unsampled** | 5.40 | 4.25 | 2.90 | 0.01 |
+
+The wells agree to **0.01 kcal/mol** — a strong check, since an identity reaction must be exactly
+symmetric.
+
+**But the seven bins spanning the barrier top are empty, and 5.40 kcal/mol is a lower bound, not
+the barrier.** The occupancy trace shows why: those bins were populated *only* during the first
+~68 iterations, by the initial seeding, and then abandoned. **Plain WE cannot repopulate an empty
+bin** — it splits walkers that reach a bin, and nothing reached these again. The seeded walkers
+simply fell off the barrier into the wells.
+
+The script detects this and says so, distinguishing "abandoned after seeding" (the barrier-crossing
+failure, otherwise silent) from "never reached at all".
+
+To actually measure the barrier you need something that *holds* walkers at the top:
+
+- **recycling** (`recycle=True` with `source_cv`/`target_cv`) for a steady-state rate,
+- **a bias along `s`** — umbrella sampling or OPES — for the full profile,
+- or far more sampling, which is the expensive way to do the same thing.
+
+**Use the symmetry as an error bar.** For this identity reaction, deviation from mirror symmetry
+about `s = 0.5` is pure sampling error. It grows with height — 0.01, 0.39, 0.81, 0.99 kcal/mol —
+so even the sampled flanks carry ~1 kcal/mol of error near the top. Most systems do not hand you a
+free internal error estimate like this; when yours does, use it.
 
 ## Stage 4 — plot
 

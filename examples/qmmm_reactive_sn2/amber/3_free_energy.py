@@ -160,9 +160,28 @@ def main() -> int:
     print(f"\n{'s':>7} {'F (kcal/mol)':>14}")
     for s_val, f_val in zip(centers[ok], fe[ok]):
         print(f"{s_val:>7.3f} {f_val:>14.2f}")
-    if ok.sum() < len(fe):
-        print(f"\n{len(fe) - int(ok.sum())} of {len(fe)} bins never visited -- "
-              "increase --iterations or --walkers-per-bin.")
+
+    # Distinguish "never reached" from "reached only while the seeded walkers were
+    # falling off the barrier". The second is the barrier-crossing failure and is
+    # otherwise silent: WE can only split walkers that *reach* a bin, so once a
+    # barrier-top bin empties there is no mechanism to repopulate it.
+    occupied = trace > 0
+    abandoned = [b for b in range(trace.shape[1])
+                 if occupied[:n_burn, b].any() and not occupied[n_burn:, b].any()]
+    unreached = [b for b in range(trace.shape[1]) if not occupied[:, b].any()]
+    if abandoned:
+        last = {b: int(np.flatnonzero(occupied[:, b])[-1]) for b in abandoned}
+        print(f"\n{len(abandoned)} bin(s) were populated ONLY by the initial seeding and "
+              "then abandoned:")
+        for b in abandoned:
+            print(f"    s = {centers[b]:.3f}  last occupied at iteration {last[b]}")
+        print("  These are almost certainly the barrier top. Plain WE cannot repopulate "
+              "an empty\n  bin, so the reported maximum is a LOWER BOUND on the barrier, "
+              "not the barrier.\n  Use recycling (steady-state WE), or bias along s "
+              "(umbrella/OPES), to hold walkers there.")
+    if unreached:
+        print(f"\n{len(unreached)} bin(s) never reached at all -- widen the seeding or "
+              "lengthen the run.")
 
     # Convergence evidence, not a convergence claim: re-estimate over the second
     # half, third quarter, and final quarter. If those agree the profile has
@@ -186,16 +205,40 @@ def main() -> int:
         bar = float(f[np.isfinite(f)].max()) if np.isfinite(f).any() else float("nan")
         print(f"  {name:<12} {bar:>9.2f}  {drift:>9.2f} kcal/mol")
 
+    # This reaction is an *identity* substitution, so F(s) must be exactly
+    # symmetric about s = 0.5. Any asymmetry is pure sampling error -- a free,
+    # assumption-light error bar that most systems do not give you.
+    n_bin = len(centers)
+    print("\nsymmetry check (identity reaction: F(s) must mirror about s = 0.5)")
+    asym = []
+    for lo in range(n_bin // 2):
+        hi = n_bin - 1 - lo
+        if ok[lo] and ok[hi]:
+            d = abs(fe[lo] - fe[hi])
+            asym.append(d)
+            print(f"  s={centers[lo]:.3f} {fe[lo]:6.2f}  <->  "
+                  f"s={centers[hi]:.3f} {fe[hi]:6.2f}   |diff| = {d:.2f}")
+    if asym:
+        print(f"  worst asymmetry {max(asym):.2f} kcal/mol -- a lower bound on the "
+              "error in this profile")
+
     worst = max([d for d in drifts if np.isfinite(d)], default=float("nan"))
-    print(f"\napparent barrier: {fe[ok].max():.2f} kcal/mol "
+    label = "apparent barrier" if not abandoned else "highest sampled point (LOWER BOUND)"
+    print(f"\n{label}: {fe[ok].max():.2f} kcal/mol "
           f"(WE free energies are already shifted to min = 0)")
-    if np.isfinite(worst) and worst < 0.5 and ok.all():
-        print(f"Windows agree to {worst:.2f} kcal/mol and every bin was visited: "
+    if np.isfinite(worst) and worst < 0.5 and ok.all() and not abandoned:
+        print(f"Windows agree to {worst:.2f} kcal/mol and every bin stayed populated: "
               "the profile has stopped moving.")
     else:
-        print(f"NOT CONVERGED: windows disagree by up to {worst:.2f} kcal/mol"
-              + ("" if ok.all() else f", and {int((~ok).sum())} bin(s) were never visited")
-              + ". Do not quote this number; lengthen the run.")
+        reasons = []
+        if not (np.isfinite(worst) and worst < 0.5):
+            reasons.append(f"windows disagree by up to {worst:.2f} kcal/mol")
+        if abandoned:
+            reasons.append(f"{len(abandoned)} bin(s) emptied after seeding (barrier unsampled)")
+        if unreached:
+            reasons.append(f"{len(unreached)} bin(s) never reached")
+        print("NOT CONVERGED: " + "; ".join(reasons)
+              + ".\nDo not quote this number.")
     print(f"written to {args.outdir}")
     return 0
 
