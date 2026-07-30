@@ -114,6 +114,31 @@ convergence:
 
 The function returns `True` when the path is done.
 
+!!! warning "Stop on the product, not on progress"
+
+    It is tempting to reuse the `projection` CV as the convergence test — stop
+    once the progress coordinate passes a threshold. That is safe only when the
+    intended product is the **sole** accessible route to that threshold.
+
+    A criterion written as a *difference of distances*,
+    `d(A-B) - d(A-C) > threshold`, is satisfied by `d(A-B)` growing alone; it does
+    not require the second bond to form. On a system with a competing channel,
+    every run can report `Converged` while none produces the intended product —
+    this was observed on a tertiary substitution test, where all 10 seeds
+    converged and none formed the product bond (the leaving group departed while
+    the nucleophile stayed 2.7–3.0 Å away, never bonding).
+
+    Prefer a condition on the product state:
+
+    ```python
+    def reacted(coords, **kwargs):
+        return bool(d(A, C) < 2.1 and d(A, B) > 3.0)   # both bonds must be right
+    ```
+
+    Drive on a progress CV; stop on a product-specific condition. See the
+    [QM/MM workflow](qmmm-workflow.md#convergence-criteria-drive-on-progress-stop-on-product)
+    for the full case.
+
 ## `md` block (optional)
 
 Backend-specific MD control overrides, e.g. AMBER `mdin` controls or GROMACS

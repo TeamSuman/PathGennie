@@ -21,6 +21,8 @@ folding/unfolding, host-guest unbinding, and QM/MM steering.
 | `examples/CLN025`                    | AMBER, GROMACS         | Chignolin path generation with end-to-end distance projections |
 | `examples/OAMe-G2`                   | GROMACS, OpenMM        | Host-guest unbinding with COM-COM distance projections         |
 | `examples/qmmm_alanine_conformation` | AMBER                  | QM/MM alanine-dipeptide conformational steering                |
+| `examples/qmmm_reactive_sn2`         | AMBER                  | Reactive QM/MM: bond breaking/forming, refinement, free energy  |
+| `examples/path_refinement_engines`   | all four               | Engine-agnostic path refinement on any backend                  |
 
 ### Movie Examples
 
@@ -78,6 +80,8 @@ examples/
   CLN025/
   OAMe-G2/
   qmmm_alanine_conformation/
+  qmmm_reactive_sn2/
+  path_refinement_engines/
 assets/
   unbind.gif
   unbind.webp
@@ -172,6 +176,35 @@ python run_pg_amber.py --config input_c7ax.yaml
 See
 [`examples/qmmm_alanine_conformation/amber/README.md`](examples/qmmm_alanine_conformation/amber/README.md)
 for the QM/MM region, targets, and regeneration notes.
+
+### AMBER QM/MM: A Reactive Path, End to End
+
+Bond breaking and forming, not just a conformational change. The four stages —
+discover, refine into a PathCV, free energy along it, plot — all at one level of
+theory (DFTB3):
+
+```bash
+cd examples/qmmm_reactive_sn2/amber
+python 1_generate_paths.py --seeds 10       # multi-seed reactive path ensemble
+python 2_refine_pathcv.py                   # -> a smooth PathCV
+python 3_free_energy.py                     # -> F(s) by Weighted Ensemble
+python 4_plot_2d_cv.py --ts 2.3565          # -> the 2-D mechanism plot
+```
+
+See [`examples/qmmm_reactive_sn2/amber/README.md`](examples/qmmm_reactive_sn2/amber/README.md)
+and the [QM/MM workflow guide](docs/qmmm-workflow.md), which covers method
+choice, why reactive barriers need shorter swarm segments than conformational
+ones, and how a convergence criterion can report success on a reaction that never
+happened.
+
+### Path Refinement on Any Backend
+
+`PathRefiner` accepts an injected sampler, so refinement is no longer OpenMM-only:
+
+```bash
+cd examples/path_refinement_engines
+python refine_with_engine.py --engine toy        # or openmm / amber / gromacs
+```
 
 ## Configuration Model
 

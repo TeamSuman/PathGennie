@@ -28,6 +28,7 @@ nav:
       - Data-Driven CVs (SPIB): data-driven-cv.md
       - Path CVs (s, z): path-cv.md
       - Path Refinement: path-refinement.md
+      - QM/MM Reactive Workflow: qmmm-workflow.md
       - PCA Distance-CV Space: pca-cv.md
       - Strategy Profiles: strategy-profiles.md
       - Weighted Ensemble: weighted-ensemble.md

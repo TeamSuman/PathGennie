@@ -7,6 +7,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Weighted Ensemble on AMBER died on its first segment.** `create_handle`
+  writes an rst7 containing coordinates only — no velocity block — but the WE
+  stage seeds walkers from raw frames through exactly that call and defaults to
+  `continue_velocities=True`, which makes the engine ask `sander` to restart with
+  `irest=1, ntx=5`. `sander` aborts with "I could not find enough velocities",
+  surfacing only as a generic non-zero exit. `run_segment` now detects a
+  coordinates-only restart and generates Maxwell-Boltzmann velocities instead,
+  warning once per engine. New `rst7_has_velocities()` implements the check
+  (box-line aware, so a trailing box on a small system is not mistaken for
+  velocities). The GROMACS backend was unaffected — it passes `-t <cpt>` only
+  when the checkpoint exists. Found by running the full QM/MM workflow end to
+  end; covered by `tests/test_amber_restart_velocities.py`.
+  `write_rst7_coords`'s docstring also claimed velocities were "set to zero"
+  when in fact no velocity block is written at all.
 - **Every re-run of the AMBER and GROMACS backends crashed (release-blocking).**
   `pg_amber.run` and `pg_gmx.run` import `shutil` at module scope and then again
   *inside* the function, which made `shutil` a function-local name for the whole
@@ -74,6 +88,34 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the one behind the paper.
 
 ### Added
+- **Engine-agnostic path refinement** (`pathrefinement.samplers.EngineSampler`).
+  `PathRefiner`'s exploration step was hard-wired to an OpenMM walker, which
+  excluded the two backends that need refinement most: AMBER — the only backend
+  that can run a QM Hamiltonian, so QM/MM refinement was impossible — and
+  GROMACS. `PathRefiner` now accepts an injected `sampler`, and `EngineSampler`
+  implements that contract on the core `Engine` protocol, driving the walker in
+  target mode on the path progress coordinate `s`. Anything satisfying the
+  protocol works; `tests/test_sampler_multi_engine.py` exercises the toy engine,
+  a bare stub, OpenMM, and protocol conformance for AMBER and GROMACS.
+  `examples/path_refinement_engines/refine_with_engine.py` runs identical
+  refinement code against all four backends.
+- **Complete reactive QM/MM workflow** (`examples/qmmm_reactive_sn2/amber`, plus
+  `docs/qmmm-workflow.md`): bond-breaking/forming path discovery → refinement
+  into a PathCV → free energy along `s` by Weighted Ensemble → 2-D mechanism
+  plot, all at one level of theory. Documents the measured QM-method tradeoff
+  (DFTB3 at 20 ms/step for sampling; *ab initio* reserved for single points,
+  because its ~8 s process launch is paid per swarm segment), why reactive
+  barriers need *shorter* swarm segments than conformational ones, and the
+  validation checks worth running (an independent TS reference at the same level
+  of theory; a geometric mechanism signature such as Walden inversion).
+- **Guidance on convergence criteria** (`docs/configuration.md`,
+  `docs/qmmm-workflow.md`). A convergence function written as a difference of
+  distances is satisfied by one distance growing alone and does not require the
+  product bond to form. On a tertiary substitution test every seed reported
+  `Converged` while none produced the product. Drive on a progress CV; stop on a
+  product-specific condition. Several shipped example configs use the
+  distance-difference pattern and are safe only because the intended product is
+  the sole route to a large CV value there.
 - **Single-GPU saturation (OpenMM).** `OpenMMEngine` backs a pool of concurrent
   Contexts on one card; `workers_per_device` (an int, or `auto` sized from cores
   and free GPU memory) runs that many swarm walkers at once instead of serially.

@@ -1,0 +1,60 @@
+# Tier 1: gas-phase identity SN2, Cl- + CH3Cl -> ClCH3 + Cl-
+# The first *reactive* PathGennie test: bonds genuinely break and form.
+# All 6 atoms are QM (DFTB3 / 3ob-3-1, which carries Cl parameters); net charge -1.
+amber:
+    topology: sn2.prmtop
+    initial_restart: sn2.rst7
+    executable: sander
+    system: vacuum
+
+pathgennie:
+    mode: target
+    target_projection: [1.2]     # product side of the antisymmetric stretch
+    tau1_steps: 10               # short bursts: high selection pressure per unit time
+    tau2_steps: 10               # minimal relaxation back into the reactant well
+    max_trial: 30                # more chances at a productive fluctuation
+    workers_per_device: 8
+    cpu_threads_per_worker: 1
+    max_cycle: 1500
+    save_freq: 1
+    sigma: 0.05                  # greedier selection
+    temperature: 300
+    reject_worse_anchor: true    # the published algorithm's accept/reject ratchet
+    save_subframes: true
+    subframe_stride: 2
+    seed: 20300325
+    verbosity: 1
+
+md:
+    controls:
+        dt: 0.0005
+        ntc: 1
+        ntf: 1
+        ntb: 0                   # gas phase: no periodicity
+        cut: 999.0
+        ntpr: 100000
+        ntwx: 0
+        ntwr: 100000
+        ntxo: 1
+        ifqnt: 1
+    extra_text: |
+        &qmmm
+          qmmask=':1-2',
+          qmcharge=-1,
+          qm_theory='DFTB3',
+        /
+
+projection:
+    module: sn2_cv
+    function: sn2_cv
+
+convergence:
+    module: sn2_cv
+    function: reacted
+    threshold: 1.0
+
+output:
+    trajectory: sn2_path.nc
+    metrics: sn2_metrics.csv
+
+workdir: pathgennie_sn2

@@ -57,12 +57,38 @@ def read_rst7_coords(path: str | Path) -> np.ndarray:
     return np.asarray(values[: natom * 3], dtype=float).reshape(natom, 3)
 
 
+def rst7_has_velocities(path: str | Path, *, has_box: bool = False) -> bool:
+    """Does this ASCII rst7 carry a velocity block?
+
+    ``sander`` aborts with "I could not find enough velocities" if asked to
+    restart (``irest=1``, ``ntx=5``) from a coordinates-only file, so callers
+    must be able to tell the two apart before launching.
+
+    Layout is: title, atom-count, ``ceil(3*natom/6)`` coordinate lines, then
+    optionally the same number of velocity lines, then optionally one box line.
+    ``has_box`` disambiguates the case where a single trailing line could be
+    either a box or a one-line velocity block (systems of one or two atoms).
+    """
+    lines = [ln for ln in Path(path).read_text().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    try:
+        natom = int(lines[1].split()[0])
+    except (IndexError, ValueError):
+        return False
+    n_block = -(-3 * natom // 6)  # ceil
+    trailing = len(lines) - 2 - n_block - (1 if has_box else 0)
+    return trailing >= n_block
+
+
 def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
     """Write a minimal AMBER rst7 restart file from ``(n_atoms, 3)`` coordinates.
 
-    Velocities are set to zero; the file uses the standard Amber restart
-    format (12.7f, 6 values per line).  This is intended for checkpoint
-    restart — the next cycle's tau1 will randomize velocities anyway.
+    The file uses the standard Amber restart format (12.7f, 6 values per line)
+    and contains **coordinates only — no velocity block**. That is intended:
+    the next cycle's tau1 randomizes velocities anyway. Anything that restarts
+    from one of these files must therefore generate velocities rather than
+    continue them; use :func:`rst7_has_velocities` to check.
     """
     coords = np.asarray(coords, dtype=float).reshape(-1, 3)
     natom = coords.shape[0]

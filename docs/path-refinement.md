@@ -7,12 +7,14 @@ alternating short MD exploration around the current path with a machine-learned
 principal-curve consensus, using [path collective variables](path-cv.md) (`s`,
 `z`) to keep exploration on-channel.
 
-> **Optional dependencies.** The refiner needs OpenMM (via `PathGennieMD`) and
-> PyTorch (the neural principal-curve model). Install with
-> `pip install 'pathgennie[ml]'` plus OpenMM from conda-forge. The
-> dependency-free primitives (`PathCV`, `PrincipalCurve`) import without them —
-> `import pathrefinement` succeeds on a base install and the heavy pieces load
-> lazily on first use.
+> **Optional dependencies.** The refiner needs PyTorch (the neural
+> principal-curve model), and its *default* walker needs OpenMM (via
+> `PathGennieMD`). Install with `pip install 'pathgennie[ml]'` plus OpenMM from
+> conda-forge. To refine with AMBER or GROMACS instead, inject an
+> [`EngineSampler`](#engine-agnostic-refinement) and OpenMM is not required. The
+> dependency-free primitives (`PathCV`, `PrincipalCurve`) import without any of
+> them — `import pathrefinement` succeeds on a base install and the heavy pieces
+> load lazily on first use.
 
 ## The idea
 
@@ -33,6 +35,7 @@ Each outer iteration:
 | `principal_curve.py` (`PrincipalCurve`) | Expectation-maximisation curve smoother (NumPy-only). |
 | `ensemblerefiner.py` (`EnsemblePathRefinerFast`) | PyTorch model that learns a smooth `t → x` map from an ensemble of trajectories. |
 | `refiner.py` (`PathRefiner`, `PathRefinementConfig`, `RefinementResult`) | Orchestrates the explore→smooth→refine loop. |
+| `samplers.py` (`EngineSampler`) | Runs the exploration step on **any** backend via the core `Engine` protocol — see below. |
 | `potentials.py` | Analytic 2-D test potentials (Müller-Brown, three-hole) with OpenMM `CustomExternalForce` builders. |
 
 ## Quick start (Müller-Brown toy)
@@ -59,6 +62,56 @@ result.save("results/refinement")   # writes the refined path + metadata/timing
 (`pathgennie_tau1`, `pathgennie_tau2`, `pathgennie_max_trial`,
 `pathgennie_max_cycle`, `pathgennie_tol_target`), endpoint handling
 (`keep_endpoints`), and parallelism (`n_workers`, `worker_device`).
+
+## Engine-agnostic refinement
+
+By default `PathRefiner` explores with an OpenMM walker built from a
+`Potential2D`. That is fine for the analytic toys, but it excludes the two
+backends that need refinement most: **AMBER**, the only backend that can run a QM
+Hamiltonian, and **GROMACS**.
+
+`PathRefiner` therefore accepts an injected `sampler` — any callable with the
+signature `sampler(path_cv, start_pt, seed) -> ndarray | None`, returning one
+trajectory in feature space. `EngineSampler` implements that on the core
+[`Engine`](architecture.md) protocol, so refinement runs on whatever the engine
+is:
+
+```python
+from pathgennie.backends.amber.engine import CoreAmberEngine
+from pathrefinement.refiner import PathRefiner, PathRefinementConfig
+from pathrefinement.samplers import EngineSampler
+
+engine = CoreAmberEngine(
+    topology="sys.prmtop", executable="sander", scratch_dir="scratch",
+    temperature=300.0, mdin_controls={...}, extra_mdin_text=qmmm_namelist,
+)
+sampler = EngineSampler(
+    engine,
+    initial_handle="sys.rst7",          # AMBER handles are rst7 paths
+    feature_fn=my_features,             # (n_atoms, 3) -> fixed-length 1-D array
+    tau1=10, tau2=10, max_trial=30, max_cycle=300,
+)
+result = PathRefiner(potential=None, config=cfg, sampler=sampler).refine(initial_path)
+```
+
+Swap `CoreAmberEngine` for `CoreGromacsEngine` or `OpenMMEngine` and nothing else
+changes. `EngineSampler` drives the walker in **target mode on the path progress
+coordinate `s`**, toward the far end of the current PathCV — exactly what the
+iterative protocol asks of the exploration step.
+
+Two things to get right:
+
+- **`feature_fn` defines the space the path lives in.** Raw Cartesians are too
+  high-dimensional and are not invariant to translation or rotation. Use a few
+  internal coordinates that separate reactant from product. `PathRefiner` is
+  currently specialised to **2-D** feature spaces.
+- **Keep the Hamiltonian the same as the one that generated the path.** A path
+  refined at a different level of theory than it was discovered at is not a
+  refinement of that path.
+
+Runnable comparison across all four engines:
+`examples/path_refinement_engines/refine_with_engine.py`. Contract regression
+tests: `tests/test_sampler_multi_engine.py`.
 
 ## Runnable examples
 

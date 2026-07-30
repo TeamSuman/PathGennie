@@ -1,0 +1,10 @@
+source leaprc.gaff2
+source leaprc.water.tip3p
+loadamberparams ch3cl.frcmod
+MOL = loadmol2 ch3cl.mol2
+CLI = copy Cl-
+translate CLI { 0.0 0.0 -3.0 }
+sys = combine { MOL CLI }
+saveamberparm sys sn2.prmtop sn2.rst7
+savepdb sys sn2.pdb
+quit

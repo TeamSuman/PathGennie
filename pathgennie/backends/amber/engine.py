@@ -23,6 +23,7 @@ import os
 import subprocess
 import threading
 import uuid
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -30,7 +31,12 @@ import numpy as np
 
 from pathgennie.core.parallel import resolve_cuda_visible_device
 
-from .utils import read_native_trajectory, read_rst7_coords, write_mdin
+from .utils import (
+    read_native_trajectory,
+    read_rst7_coords,
+    rst7_has_velocities,
+    write_mdin,
+)
 
 __all__ = ["CoreAmberEngine"]
 
@@ -65,6 +71,21 @@ class CoreAmberEngine:
             n = next(self._counter)
         return f"{n}_{uuid.uuid4().hex[:8]}"
 
+    def _warn_velocity_fallback(self) -> None:
+        """Say this once per engine, not once per segment (swarms are large)."""
+        with self._lock:
+            if getattr(self, "_warned_velocities", False):
+                return
+            self._warned_velocities = True
+        warnings.warn(
+            "Asked to continue velocities from a coordinates-only rst7 (one written "
+            "by create_handle). Generating Maxwell-Boltzmann velocities instead; "
+            "sander cannot restart from such a file. Segments seeded this way are "
+            "velocity-decorrelated from their parent.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
     def _device_dir(self, device: Optional[int]) -> Path:
         name = "dev_cpu" if device is None else f"dev{device}"
         path = self.scratch_dir / name
@@ -91,12 +112,24 @@ class CoreAmberEngine:
             seg_controls["ntwx"] = int(subframe_stride)
             seg_controls["ioutfm"] = 1
 
+        # Restarts written by create_handle carry coordinates only. sander aborts
+        # with "I could not find enough velocities" if told to continue from one,
+        # so draw fresh Maxwell-Boltzmann velocities instead of failing. This is
+        # reached whenever a caller seeds from raw frames and asks to continue
+        # velocities -- the Weighted Ensemble stage does exactly that by default.
+        continue_velocities = not randomize_velocities
+        if continue_velocities and not rst7_has_velocities(
+            handle, has_box=bool(seg_controls.get("ntb", 1))
+        ):
+            continue_velocities = False
+            self._warn_velocity_fallback()
+
         write_mdin(
             mdin,
             int(n_steps),
             self.temperature,
             seg_controls,
-            continue_velocities=not randomize_velocities,
+            continue_velocities=continue_velocities,
             random_seed=int(seed),
             extra_text=self.extra_mdin_text,
         )
@@ -155,8 +188,10 @@ class CoreAmberEngine:
     def create_handle(self, coords: np.ndarray) -> str:
         """Write coordinates to a new rst7 file and return its path.
 
-        The restart file has zero velocities; the next cycle's tau1 will
-        randomize them anyway.
+        The restart carries **no velocity block**; the next cycle's tau1 will
+        randomize velocities anyway. ``run_segment`` detects this and generates
+        velocities even when asked to continue them, because sander cannot
+        restart from a coordinates-only file.
         """
         from .utils import write_rst7_coords
 
