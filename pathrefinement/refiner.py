@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import json
 import multiprocessing
 import os
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 
-from pathgennie.backends.openmm import PathGennieMD
 from .ensemblerefiner import EnsemblePathRefinerFast
 from .pathcv import PathCV
-from .potentials import Potential2D
+# Type-only: potentials.py imports OpenMM, and refinement itself does not need it.
+# Kept out of the runtime import graph so AMBER/GROMACS (hence QM/MM) can refine.
+if TYPE_CHECKING:  # pragma: no cover
+    from .potentials import Potential2D
 from .principal_curve import PrincipalCurve
 
 
@@ -104,6 +108,10 @@ def _run_single_trajectory(args):
         s, z = path_cv.compute(np.atleast_2d(features))
         return float(s) >= float(target[0]) - config.pathgennie_tol_target
 
+    # Imported here rather than at module scope: refinement itself is
+    # engine-agnostic, and only this default OpenMM sampler needs OpenMM.
+    from pathgennie.backends.openmm import PathGennieMD
+
     pathgennie = PathGennieMD(
         simulation=sim,
         projection_fn=_project_fn,
@@ -157,11 +165,29 @@ class PathRefiner:
     potentials (e.g. Muller-Brown).
     """
 
-    def __init__(self, potential: Potential2D, config: PathRefinementConfig, feature_fn=None):
+    def __init__(self, potential: Potential2D, config: PathRefinementConfig, feature_fn=None,
+                 sampler=None):
+        """
+        ``sampler`` decouples refinement from any particular MD engine. It is a
+        callable ``sampler(path_cv, start_pt, seed) -> np.ndarray | None`` returning
+        one trajectory in feature space. Leave it ``None`` to keep the historical
+        behaviour: an OpenMM ``PathGennieMD`` walker built from ``potential``,
+        run in a spawned process per walker.
+
+        Supplying a sampler lets AMBER/GROMACS (and hence QM/MM) drive the
+        exploration step, which is otherwise impossible because the default path
+        hardcodes OpenMM. The refinement mathematics -- PrincipalCurve, the NN
+        consensus and PathCV -- is already engine-independent.
+        """
         self.potential = potential
         self.config = config
-        # Parent process keeps one simulation for quick CV evaluation only.
-        self.simulation = self.potential.create_simulation(seed=config.seed)
+        self.sampler = sampler
+        # Parent keeps one simulation for quick CV evaluation -- only meaningful
+        # for the built-in OpenMM path, so skip it when a sampler is injected.
+        self.simulation = (
+            None if sampler is not None
+            else self.potential.create_simulation(seed=config.seed)
+        )
 
         # Use module-level default so feature_fn is always picklable
         if feature_fn is None:
@@ -184,6 +210,13 @@ class PathRefiner:
         """Run n_trajectories walkers, either serially or in parallel."""
         n = self.config.n_trajectories
         n_workers = min(self.config.n_workers, n)  # never spawn more than needed
+
+        if self.sampler is not None:
+            # Injected engine: call it directly. Engines such as AMBER already
+            # parallelise their own swarm internally and are not picklable across
+            # a spawned Pool, so walkers are collected serially here.
+            raw = [self.sampler(path_cv, start_pt, it_seed + i) for i in range(n)]
+            return [r for r in raw if r is not None and len(r) > 0]
 
         # Build argument list — each worker gets a unique seed
         worker_args = [
