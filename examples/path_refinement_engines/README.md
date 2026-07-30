@@ -23,14 +23,26 @@ function differs between them.
 ```bash
 python refine_with_engine.py --engine toy                       # no MD binary needed
 python refine_with_engine.py --engine openmm --platform CPU     # needs openmm
-python refine_with_engine.py --engine amber   --topology sys.prmtop --start sys.rst7 --atoms 0 1 0 5
-python refine_with_engine.py --engine gromacs --topology sys.top    --start sys.gro  --atoms 0 1 0 5
+
+python refine_with_engine.py --engine amber \
+    --topology sys.prmtop --start sys.rst7 --atoms 0 1 0 5
+
+python refine_with_engine.py --engine gromacs \
+    --topology ../alanine_dipeptide/gromacs/ala_dipeptide.top \
+    --start    ../alanine_dipeptide/gromacs/ala_dipeptide_equilibrated.gro \
+    --mdp      ../alanine_dipeptide/gromacs/md.mdp --atoms 0 1 0 5
 ```
 
 The `toy` and `openmm` cases are self-contained — they build their own system in memory, so you can
-run them immediately. The `amber` and `gromacs` cases need your own topology and starting structure;
+run them immediately. The `amber` and `gromacs` cases need a topology and starting structure; the
+GROMACS line above uses the shipped alanine-dipeptide example as-is, and
 [`examples/qmmm_reactive_sn2/amber`](../qmmm_reactive_sn2/amber/README.md) is a complete worked AMBER
 case including the QM/MM settings.
+
+All four have been run against real binaries — `sander` under QM/MM DFTB3 and `gmx` on solvated
+alanine dipeptide. This script is the end-to-end check to run when changing a subprocess engine; the
+protocol conformance tests in `tests/test_sampler_multi_engine.py` deliberately need no MD binary and
+therefore cannot catch a broken command line.
 
 ## What the sampler does
 

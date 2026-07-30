@@ -14,7 +14,8 @@ and the analysis are identical in all four cases.
     python refine_with_engine.py --engine toy          # no MD binary needed
     python refine_with_engine.py --engine openmm       # needs openmm
     python refine_with_engine.py --engine amber   --topology sys.prmtop --start sys.rst7
-    python refine_with_engine.py --engine gromacs --topology sys.top    --start sys.gro
+    python refine_with_engine.py --engine gromacs --topology sys.top    --start sys.gro \
+                                 --mdp md.mdp
 """
 from __future__ import annotations
 
@@ -85,17 +86,21 @@ def build_engine(args):
         return engine, str(Path(args.start).resolve()), _distance_pair(args.atoms)
 
     if args.engine == "gromacs":
-        from pathgennie.backends.gromacs.pg_gmx import CoreGromacsEngine
+        from pathgennie.backends.gromacs.pg_gmx import CoreGromacsEngine, read_mdp
 
+        # Read a real .mdp rather than hand-building a dict: grompp rejects an
+        # incomplete parameter set, and this is what the backend itself does.
         engine = CoreGromacsEngine(
             topology=args.topology,
             executable=args.executable or "gmx",
             scratch_dir=scratch,
             temperature=300.0,
-            mdp_controls={"integrator": "md", "dt": 0.002, "nstlist": 10,
-                          "coulombtype": "PME", "rvdw": 1.0, "rcoulomb": 1.0,
-                          "constraints": "h-bonds", "tcoupl": "v-rescale",
-                          "tau_t": 0.1, "ref_t": 300.0},
+            mdp_controls=read_mdp(Path(args.mdp)),
+            maxwarn=args.maxwarn,
+            mdrun_args=["-ntmpi", "1", "-ntomp", "1", "-nb", "cpu", "-pin", "off"],
+            # Needed for create_handle: a .gro carries topology metadata that
+            # bare coordinates do not.
+            template_gro=args.start,
         )
         # A GROMACS handle is a path to a .gro file.
         return engine, str(Path(args.start).resolve()), _distance_pair(args.atoms)
@@ -130,6 +135,8 @@ def main() -> int:
     p.add_argument("--topology", type=Path, help="prmtop (amber) or top (gromacs)")
     p.add_argument("--start", type=Path, help="rst7 (amber) or gro (gromacs)")
     p.add_argument("--executable", help="sander / gmx; default is the engine's own")
+    p.add_argument("--mdp", type=Path, help="GROMACS .mdp (required for --engine gromacs)")
+    p.add_argument("--maxwarn", type=int, default=2, help="grompp -maxwarn")
     p.add_argument("--atoms", type=int, nargs=4, default=[0, 1, 0, 5],
                    metavar=("A", "B", "C", "D"),
                    help="two atom pairs defining the 2-D feature space")
@@ -143,6 +150,8 @@ def main() -> int:
 
     if args.engine in ("amber", "gromacs") and not (args.topology and args.start):
         p.error(f"--engine {args.engine} requires --topology and --start")
+    if args.engine == "gromacs" and not args.mdp:
+        p.error("--engine gromacs requires --mdp")
 
     from pathrefinement.refiner import PathRefiner, PathRefinementConfig
     from pathrefinement.samplers import EngineSampler

@@ -10,9 +10,11 @@ contract holds for each engine independently:
   * OpenMM, when installed,
   * AMBER's ``CoreAmberEngine``, constructed against a real prmtop.
 
-GROMACS is covered by the same protocol assertion as AMBER: both are subprocess
-engines built on the identical ``Engine`` surface, and ``CoreGromacsEngine`` is
-checked here for protocol conformance without requiring a ``gmx`` binary in CI.
+The AMBER and GROMACS rows here assert protocol conformance only, so that CI needs
+no MD binary. Both have separately been driven by a real binary end-to-end --
+``sander`` under QM/MM DFTB3, and ``gmx`` on solvated alanine dipeptide -- via
+``examples/path_refinement_engines/refine_with_engine.py``. Run that when changing
+the subprocess engines; a conformance check cannot catch a broken command line.
 """
 
 from __future__ import annotations
