@@ -12,6 +12,7 @@ writer thread dies.
 from __future__ import annotations
 
 import queue
+import time
 import threading
 from pathlib import Path
 from typing import Optional, Tuple
@@ -76,6 +77,30 @@ class HDF5Storage:
         if self._error is not None:
             raise RuntimeError(f"HDF5 storage writer failed: {self._error}") from self._error
 
+    def _drain(self, poll: float = 0.01) -> None:
+        """Wait for queued writes to land, without hanging on a dead writer.
+
+        ``Queue.join()`` waits for ``task_done()`` on every queued item, and the
+        writer thread only calls that for items it has *popped*. If the writer died
+        with a backlog -- failed file open, full disk -- those calls never come and
+        an unguarded ``join()`` blocks forever, turning a reportable error into a
+        hung job at exactly the moment checkpointing is meant to protect the run.
+        """
+        while not self._queue.empty():
+            self._raise_if_failed()
+            if not self._thread.is_alive():
+                raise RuntimeError(
+                    "HDF5 storage writer thread is not running; "
+                    f"{self._queue.qsize()} queued write(s) will never be flushed"
+                )
+            time.sleep(poll)
+        self._raise_if_failed()
+        # Safe now: at most the one in-flight item remains, and the writer is alive
+        # to finish it.
+        if self._thread.is_alive():
+            self._queue.join()
+        self._raise_if_failed()
+
     def append(self, dataset_name: str, data: np.ndarray) -> None:
         """Queue an array to be appended to the named dataset."""
         self._raise_if_failed()
@@ -108,8 +133,7 @@ class HDF5Storage:
         import json
 
         # Drain the async writer queue so trajectory/metric datasets are current.
-        self._queue.join()
-        self._raise_if_failed()
+        self._drain()
 
         with h5py.File(self.filepath, "a") as f:
             grp = f.require_group("checkpoint")

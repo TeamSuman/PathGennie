@@ -7,6 +7,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Weighted Ensemble could release an engine handle still in use.** The stage
+  compared handles with `is not`, while `driver.py` documents the opposite rule:
+  compare by value, because handles may be plain ints (CPython caches only
+  -5..256) or file paths that have been re-derived or round-tripped through an
+  executor. An engine returning an *equal* handle — the same value as a distinct
+  object — therefore had its handle released while the walker still pointed at
+  it. AMBER and GROMACS handles are file paths, so the released artefact is a
+  file on disk. Covered by `tests/test_we_handle_identity.py`; mutation-verified
+  (restoring `is not` fails 3 of its 4 tests).
+- **A dead HDF5 writer hung the run instead of reporting.** `save_checkpoint`
+  called `self._queue.join()` and only then checked for a writer error.
+  `Queue.join()` waits for `task_done()` on every queued item, and the writer
+  thread calls that only for items it has *popped* — so if it died with a backlog
+  (failed file open, full disk) the join blocked forever. A reportable error
+  became a silent hang, at exactly the moment checkpointing exists to protect a
+  long run. Draining now polls for writer liveness and surfaces the error, naming
+  how many writes will never be flushed. Covered by
+  `tests/test_storage_checkpoint_deadlock.py`; mutation-verified — restoring the
+  bare `join()` makes the test suite hang, which is the defect itself.
 - **Weighted Ensemble free energies and rates included the startup transient.**
   Bin occupancy was averaged from iteration 0, so the relaxation away from the
   seeded initial distribution was mixed into the estimate. Seeding is commonly

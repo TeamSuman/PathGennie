@@ -260,7 +260,12 @@ class WeightedEnsembleStage:
 
             new_handles = self.executor.map(worker, list(zip(walkers, seg_seeds)))
             for walker, new_handle in zip(walkers, new_handles):
-                if new_handle is not walker.handle:
+                # Compare by value, not identity -- the same rule the driver states.
+                # Handles may be plain ints (CPython caches only -5..256) or file
+                # paths that have been re-derived or round-tripped through an
+                # executor, so `is not` can be true for an equal handle and release
+                # one the walker is still using.
+                if new_handle != walker.handle:
                     engine.release(walker.handle)
                 walker.handle = new_handle
                 walker.cv = self._cv(engine, new_handle)
