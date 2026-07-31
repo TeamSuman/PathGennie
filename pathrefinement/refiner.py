@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 
-from .ensemblerefiner import EnsemblePathRefinerFast
 from .pathcv import PathCV
 # Type-only: potentials.py imports OpenMM, and refinement itself does not need it.
 # Kept out of the runtime import graph so AMBER/GROMACS (hence QM/MM) can refine.
+# ensemblerefiner imports torch at module scope, and torch is an optional extra
+# ([ml]), so it is imported lazily for the same reason: constructing a
+# PathRefiner, injecting a sampler and collecting trajectories must not require
+# it. Only the NN consensus step inside refine() genuinely needs torch.
 if TYPE_CHECKING:  # pragma: no cover
     from .potentials import Potential2D
 from .principal_curve import PrincipalCurve
@@ -296,6 +299,8 @@ class PathRefiner:
                 print("  Training NN refiner...")
 
             t1 = time.perf_counter()
+            from .ensemblerefiner import EnsemblePathRefinerFast
+
             refiner = EnsemblePathRefinerFast(
                 hidden_dim=self.config.nn_hidden_dim, device=self.config.device
             )

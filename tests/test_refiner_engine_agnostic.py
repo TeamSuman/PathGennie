@@ -20,7 +20,13 @@ import pytest
 
 
 def test_refiner_imports_without_openmm(monkeypatch):
-    """Module import must not require OpenMM."""
+    """Module import must not require OpenMM *or* torch.
+
+    torch arrives via ``ensemblerefiner`` and is an optional extra (``[ml]``), so
+    CI does not install it. Blocking it here is what keeps the module-scope import
+    from creeping back: the guarantee is that constructing a PathRefiner and
+    driving it with an injected sampler needs neither heavy dependency.
+    """
     import builtins
     import importlib
     import sys
@@ -28,7 +34,8 @@ def test_refiner_imports_without_openmm(monkeypatch):
     real_import = builtins.__import__
 
     def blocked(name, *args, **kwargs):
-        if name.startswith("openmm") or name.startswith("pathgennie.backends.openmm"):
+        if (name.startswith("openmm") or name.startswith("pathgennie.backends.openmm")
+                or name == "torch" or name.startswith("torch.")):
             raise ImportError(f"blocked for test: {name}")
         return real_import(name, *args, **kwargs)
 
@@ -36,8 +43,17 @@ def test_refiner_imports_without_openmm(monkeypatch):
         del sys.modules[mod]
     monkeypatch.setattr(builtins, "__import__", blocked)
 
+    for mod in [m for m in sys.modules if m.startswith("pathrefinement")]:
+        del sys.modules[mod]
     module = importlib.import_module("pathrefinement.refiner")
     assert hasattr(module, "PathRefiner")
+    # And it must be usable, not merely importable.
+    cfg = module.PathRefinementConfig()
+    cfg.n_trajectories = 2
+    r = module.PathRefiner(potential=None, config=cfg,
+                           sampler=lambda pcv, sp, seed: np.linspace([0.0, 0.0], [1.0, 1.0], 4))
+    assert r.simulation is None
+    assert len(r._collect_trajectories(None, np.zeros(2), 0)) == 2
 
 
 def test_injected_sampler_replaces_the_openmm_walker():
