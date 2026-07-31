@@ -22,6 +22,10 @@ import numpy as np
 
 __all__ = ["HDF5Storage"]
 
+# Queue sentinel: routes a checkpoint write onto the writer thread rather than
+# opening the file a second time from the caller.
+_CHECKPOINT = "__pathgennie_checkpoint__"
+
 
 class HDF5Storage:
     """Streams trajectory frames and metrics to an HDF5 file asynchronously."""
@@ -29,7 +33,7 @@ class HDF5Storage:
     def __init__(self, filepath: Path | str, chunk_size: int = 1):
         self.filepath = Path(filepath)
         self.chunk_size = max(1, int(chunk_size))
-        self._queue: "queue.Queue[Tuple[str, np.ndarray]]" = queue.Queue()
+        self._queue: "queue.Queue[Tuple[str, object]]" = queue.Queue()
         self._stop_event = threading.Event()
         self._error: Optional[BaseException] = None
         # Signals that the file has been opened (or failed to open) so append()
@@ -49,21 +53,24 @@ class HDF5Storage:
                     except queue.Empty:
                         continue
                     try:
-                        if dataset_name not in f:
-                            shape = (0,) + data.shape
-                            maxshape = (None,) + data.shape
-                            f.create_dataset(
-                                dataset_name,
-                                shape=shape,
-                                maxshape=maxshape,
-                                dtype=data.dtype,
-                                chunks=(self.chunk_size,) + data.shape,
-                                compression="gzip",
-                            )
-                        dset = f[dataset_name]
-                        curr_size = dset.shape[0]
-                        dset.resize(curr_size + 1, axis=0)
-                        dset[curr_size] = data
+                        if dataset_name == _CHECKPOINT:
+                            self._write_checkpoint(f, data)
+                        else:
+                            if dataset_name not in f:
+                                shape = (0,) + data.shape
+                                maxshape = (None,) + data.shape
+                                f.create_dataset(
+                                    dataset_name,
+                                    shape=shape,
+                                    maxshape=maxshape,
+                                    dtype=data.dtype,
+                                    chunks=(self.chunk_size,) + data.shape,
+                                    compression="gzip",
+                                )
+                            dset = f[dataset_name]
+                            curr_size = dset.shape[0]
+                            dset.resize(curr_size + 1, axis=0)
+                            dset[curr_size] = data
                     finally:
                         self._queue.task_done()
         except BaseException as exc:  # noqa: BLE001 - surfaced to the main thread
@@ -114,6 +121,39 @@ class HDF5Storage:
 
     # -- checkpoint save / load -----------------------------------------------
 
+    @staticmethod
+    def _write_checkpoint(f: "h5py.File", payload: dict) -> None:
+        """Write the checkpoint group. Runs **on the writer thread**, into its own
+        open file handle, so the file is never open twice at once."""
+        import json
+
+        grp = f.require_group("checkpoint")
+        grp.attrs["cycle"] = int(payload["cycle"])
+        grp.attrs["anchor_metric"] = float(payload["anchor_metric"])
+        # How much trajectory belongs to this checkpoint. Frames streamed after it
+        # are from cycles the resumed run will re-execute, so without this the
+        # resume both loads and regenerates them. Nothing else on disk identifies
+        # where to cut -- frames carry no cycle index. Because the queue is FIFO,
+        # every frame appended before this item has already been written, so the
+        # count is exact.
+        grp.attrs["n_frames"] = int(f["trajectory"].shape[0]) if "trajectory" in f else 0
+        grp.attrs["rng_state_json"] = json.dumps(
+            _rng_state_to_serialisable(payload["rng_state"])
+        )
+        datasets_to_save = [
+            ("anchor_coords", payload["anchor_coords"]),
+            ("anchor_cv", payload["anchor_cv"]),
+        ]
+        if payload.get("metric_history") is not None:
+            datasets_to_save.append(("metric_history", np.asarray(payload["metric_history"])))
+        for name, arr in datasets_to_save:
+            if name in grp:
+                del grp[name]
+            grp.create_dataset(name, data=np.asarray(arr))
+        # A checkpoint that is still in a buffer does not survive the crash it
+        # exists to survive.
+        f.flush()
+
     def save_checkpoint(
         self,
         cycle: int,
@@ -123,41 +163,32 @@ class HDF5Storage:
         anchor_metric: float,
         metric_history: Optional[List[float] | np.ndarray] = None,
     ) -> None:
-        """Flush pending writes then synchronously save restart metadata.
+        """Queue restart metadata behind pending writes, then wait for it to land.
 
-        This blocks the caller (main thread) while the writer thread drains its
-        queue, then writes the checkpoint group directly.  The brief pause is
-        acceptable because checkpoints are infrequent (every ``checkpoint_freq``
-        cycles, typically much larger than ``save_freq``).
+        The checkpoint is written **by the writer thread**, through the file handle
+        it already holds. Opening the same HDF5 file a second time while that
+        thread has it open is not a supported pattern -- it happens to work because
+        HDF5 caches file identifiers within a process, which is not a guarantee to
+        build on.
+
+        Routing it through the queue also makes ``n_frames`` exact for free: the
+        queue is FIFO, so every frame appended before this call is on disk by the
+        time the checkpoint is written.
+
+        The caller blocks until it lands. That is deliberate -- a checkpoint that
+        has not been written is not a checkpoint -- and cheap, because checkpoints
+        are infrequent relative to ``save_freq``.
         """
-        import json
-
-        # Drain the async writer queue so trajectory/metric datasets are current.
+        self._raise_if_failed()
+        self._queue.put((_CHECKPOINT, {
+            "cycle": cycle,
+            "rng_state": rng_state,
+            "anchor_coords": anchor_coords,
+            "anchor_cv": anchor_cv,
+            "anchor_metric": anchor_metric,
+            "metric_history": metric_history,
+        }))
         self._drain()
-
-        with h5py.File(self.filepath, "a") as f:
-            grp = f.require_group("checkpoint")
-            # Scalar / small metadata.
-            grp.attrs["cycle"] = int(cycle)
-            grp.attrs["anchor_metric"] = float(anchor_metric)
-            # How much trajectory belongs to this checkpoint. Frames streamed after
-            # it are from cycles the resumed run will re-execute, so without this
-            # the resume both loads and regenerates them. Nothing else on disk
-            # identifies where to cut -- frames carry no cycle index.
-            grp.attrs["n_frames"] = int(f["trajectory"].shape[0]) if "trajectory" in f else 0
-            grp.attrs["rng_state_json"] = json.dumps(_rng_state_to_serialisable(rng_state))
-            # Arrays (overwrite on every checkpoint).
-            datasets_to_save = [
-                ("anchor_coords", anchor_coords),
-                ("anchor_cv", anchor_cv),
-            ]
-            if metric_history is not None:
-                datasets_to_save.append(("metric_history", np.asarray(metric_history)))
-
-            for name, arr in datasets_to_save:
-                if name in grp:
-                    del grp[name]
-                grp.create_dataset(name, data=np.asarray(arr))
 
     @staticmethod
     def _truncate_to_checkpoint(filepath: Path) -> None:

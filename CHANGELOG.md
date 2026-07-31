@@ -7,6 +7,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Checkpoints are written through the writer thread's own file handle.**
+  `save_checkpoint` opened the HDF5 file a second time while the writer thread
+  still had it open. That is not a supported pattern — it worked only because
+  HDF5 caches file identifiers within a process, an implementation detail rather
+  than a guarantee, and the sort of thing that breaks under a different HDF5
+  build or with file locking enabled. The write is now queued behind pending
+  appends and performed by the writer thread, which also makes the recorded
+  `n_frames` exact for free: the queue is FIFO, so every frame appended before
+  the checkpoint is on disk when it is written. The file is flushed afterwards —
+  a checkpoint still sitting in a buffer does not survive the crash it exists to
+  survive. Covered by `tests/test_storage_single_handle.py`.
 - **`run_segment` broke its own return contract on the subprocess backends.** The
   `Engine` protocol states that when `save_subframes` is True the return "changes
   to `(Handle, subframes)`", and the driver unpacks unconditionally. AMBER and
