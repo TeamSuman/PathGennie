@@ -140,6 +140,11 @@ class HDF5Storage:
             # Scalar / small metadata.
             grp.attrs["cycle"] = int(cycle)
             grp.attrs["anchor_metric"] = float(anchor_metric)
+            # How much trajectory belongs to this checkpoint. Frames streamed after
+            # it are from cycles the resumed run will re-execute, so without this
+            # the resume both loads and regenerates them. Nothing else on disk
+            # identifies where to cut -- frames carry no cycle index.
+            grp.attrs["n_frames"] = int(f["trajectory"].shape[0]) if "trajectory" in f else 0
             grp.attrs["rng_state_json"] = json.dumps(_rng_state_to_serialisable(rng_state))
             # Arrays (overwrite on every checkpoint).
             datasets_to_save = [
@@ -154,18 +159,55 @@ class HDF5Storage:
                     del grp[name]
                 grp.create_dataset(name, data=np.asarray(arr))
 
+    @staticmethod
+    def _truncate_to_checkpoint(filepath: Path) -> None:
+        """Drop streamed rows written after the last checkpoint.
+
+        A no-op for checkpoints written before ``n_frames`` was recorded, so old
+        files still load (with the previous, duplicating behaviour) rather than
+        failing.
+        """
+        try:
+            with h5py.File(filepath, "a") as f:
+                if "checkpoint" not in f:
+                    return
+                n = f["checkpoint"].attrs.get("n_frames")
+                if n is None:
+                    return
+                n = int(n)
+                for name in ("trajectory", "metric"):
+                    if name in f and f[name].shape[0] > n:
+                        f[name].resize(n, axis=0)
+        except OSError:
+            # Read-only location, or a file another process holds open: loading a
+            # slightly-too-long trajectory is better than refusing to resume at all.
+            pass
+
     @classmethod
     def load_checkpoint(cls, filepath: Path | str) -> "dict | None":
         """Load the last saved checkpoint from *filepath*, or ``None``.
 
         Returns a dict with keys: ``cycle``, ``rng_state``, ``anchor_coords``,
         ``anchor_cv``, ``anchor_metric``, ``trajectory``, ``metric_history``.
+
+        Frames streamed *after* the checkpoint are dropped, from the returned
+        arrays and from the file. They belong to cycles the resumed run will
+        execute again, so keeping them would duplicate those frames -- and they
+        come from a discarded branch, so they are wrong rather than merely
+        redundant. Truncating the file too matters: otherwise the resumed run
+        appends after the stale rows and the next resume repeats the problem.
+
+        This runs before the caller constructs an :class:`HDF5Storage`, so there
+        is no writer thread to race with.
         """
         import json
 
         filepath = Path(filepath)
         if not filepath.exists():
             return None
+
+        cls._truncate_to_checkpoint(filepath)
+
         with h5py.File(filepath, "r") as f:
             if "checkpoint" not in f:
                 return None

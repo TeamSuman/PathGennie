@@ -7,6 +7,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Resuming from a checkpoint duplicated trajectory frames.** Frames stream every
+  `save_freq` cycles but checkpoints are written only every `checkpoint_freq`
+  cycles, so a crash between two checkpoints — the case checkpointing exists for —
+  leaves frames on disk for cycles *after* the last checkpoint. The driver loaded
+  the whole stored trajectory and then re-ran from `checkpoint_cycle + 1`, so
+  those cycles were both loaded and regenerated. The extra frames come from a
+  discarded branch, so they are wrong rather than merely redundant. Nothing on
+  disk identified where to cut — frames carry no cycle index — so `save_checkpoint`
+  now records `n_frames`, and `load_checkpoint` truncates both the returned arrays
+  and the file (otherwise the resumed run appends after the stale rows and the
+  next resume repeats the problem). Checkpoints written before this attribute
+  existed still load, with the previous behaviour. Covered by
+  `tests/test_checkpoint_resume_frames.py` plus an end-to-end kill-and-resume
+  check that asserts the resumed **trajectory** is identical to an uninterrupted
+  run, not merely the same length; mutation-verified.
 - **Weighted Ensemble could release an engine handle still in use.** The stage
   compared handles with `is not`, while `driver.py` documents the opposite rule:
   compare by value, because handles may be plain ints (CPython caches only
