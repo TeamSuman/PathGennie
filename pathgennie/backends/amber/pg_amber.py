@@ -135,12 +135,18 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
             "OPENBLAS_NUM_THREADS": n_threads,
         }
 
+    # Carry the periodic box so restarts built from bare coordinates (checkpoint
+    # resume, WE seeding) stay valid for solvated systems.
+    from .utils import read_rst7_box
+    box = read_rst7_box(initial_restart)
+
     engine = CoreAmberEngine(
         topology=topology,
         executable=executable,
         scratch_dir=scratch_dir,
         temperature=temperature,
         mdin_controls=mdin_controls,
+        box=box,
         extra_mdin_text=extra_mdin_text,
         command_prefix=command_prefix,
         env_overrides=env_overrides,

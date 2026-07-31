@@ -81,7 +81,34 @@ def rst7_has_velocities(path: str | Path, *, has_box: bool = False) -> bool:
     return trailing >= n_block
 
 
-def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
+def read_rst7_box(path: str | Path) -> "np.ndarray | None":
+    """Return ``[lx, ly, lz, a, b, g]`` from an ASCII rst7, or ``None``.
+
+    Distinguished from a velocity block by position and width: the box is the
+    final line and carries exactly six values.
+    """
+    lines = [ln for ln in Path(path).read_text().splitlines() if ln.strip()]
+    if len(lines) < 3:
+        return None
+    try:
+        natom = int(lines[1].split()[0])
+    except (IndexError, ValueError):
+        return None
+    n_block = -(-3 * natom // 6)
+    # coords (+ optional velocities) then, if present, one box line.
+    for n_blocks in (1, 2):
+        idx = 2 + n_blocks * n_block
+        if idx == len(lines) - 1:
+            vals = lines[-1].split()
+            if len(vals) == 6:
+                try:
+                    return np.array([float(v) for v in vals], dtype=float)
+                except ValueError:
+                    return None
+    return None
+
+
+def write_rst7_coords(path: str | Path, coords: np.ndarray, box=None) -> None:
     """Write a minimal AMBER rst7 restart file from ``(n_atoms, 3)`` coordinates.
 
     The file uses the standard Amber restart format (12.7f, 6 values per line)
@@ -89,6 +116,12 @@ def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
     the next cycle's tau1 randomizes velocities anyway. Anything that restarts
     from one of these files must therefore generate velocities rather than
     continue them; use :func:`rst7_has_velocities` to check.
+
+    ``box`` is required for periodic systems. Without it sander refuses the file
+    outright — ``peek_ewald_inpcrd: Box info not found in inpcrd`` — so any
+    solvated run that resumes from a checkpoint or seeds Weighted Ensemble from
+    raw frames fails. Pass ``[lx, ly, lz]`` (angles default to 90°) or the full
+    six values. Omitting it keeps the gas-phase (``ntb=0``) format unchanged.
     """
     coords = np.asarray(coords, dtype=float).reshape(-1, 3)
     natom = coords.shape[0]
@@ -102,6 +135,13 @@ def write_rst7_coords(path: str | Path, coords: np.ndarray) -> None:
             row = []
     if row:
         lines.append("".join(row))
+    if box is not None:
+        b = [float(v) for v in np.asarray(box, dtype=float).ravel()]
+        if len(b) == 3:
+            b = b + [90.0, 90.0, 90.0]
+        if len(b) != 6:
+            raise ValueError(f"box must have 3 or 6 values, got {len(b)}")
+        lines.append("".join(f"{v:12.7f}" for v in b))
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

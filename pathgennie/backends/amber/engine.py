@@ -53,6 +53,7 @@ class CoreAmberEngine:
         extra_mdin_text: str = "",
         command_prefix: Optional[list] = None,
         env_overrides: Optional[dict] = None,
+        box=None,
     ):
         self.topology = str(topology)
         self.exe = str(executable)
@@ -63,6 +64,18 @@ class CoreAmberEngine:
         self.extra_mdin_text = extra_mdin_text
         self.command_prefix = command_prefix or []
         self.env_overrides = {str(k): str(v) for k, v in (env_overrides or {}).items()}
+        self.box = box
+        # A periodic run whose restarts carry no box fails inside sander with
+        # "peek_ewald_inpcrd: Box info not found in inpcrd", and only on the paths
+        # that build restarts from bare coordinates -- checkpoint resume and WE
+        # seeding -- so it surfaces long after the run starts.
+        if box is None and int(mdin_controls.get("ntb", 0) or 0) != 0:
+            warnings.warn(
+                "periodic run (ntb != 0) but no box was supplied to CoreAmberEngine; "
+                "restarts written by create_handle will lack box information and "
+                "sander will reject them on checkpoint resume or WE seeding.",
+                RuntimeWarning, stacklevel=2,
+            )
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -216,5 +229,5 @@ class CoreAmberEngine:
 
         coords = np.asarray(coords, dtype=float).reshape(-1, 3)
         rst_path = self.scratch_dir / f"ckpt_{self._uid()}.rst7"
-        write_rst7_coords(rst_path, coords)
+        write_rst7_coords(rst_path, coords, box=self.box)
         return str(rst_path)

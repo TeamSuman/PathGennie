@@ -7,6 +7,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **AMBER restarts for periodic systems carried no box.** `write_rst7_coords`
+  wrote coordinates only, so sander rejected the file outright —
+  `peek_ewald_inpcrd: Box info not found in inpcrd`. `create_handle` builds
+  restarts through that function, and the driver calls it when resuming from a
+  checkpoint, as does the Weighted Ensemble stage when seeding walkers from raw
+  frames: **both were broken for any solvated AMBER system.** Gas-phase runs were
+  unaffected because `ntb=0` needs no box, which is why it survived an entire
+  gas-phase campaign and surfaced only on the first solvated one.
+  `write_rst7_coords` now takes an optional `box` (3 lengths, angles defaulting
+  to 90°, or all 6 values), `read_rst7_box()` reads one back, `CoreAmberEngine`
+  carries it, and `pg_amber.run` reads it from the initial restart. A periodic
+  engine constructed without a box now warns rather than failing later inside
+  sander. Covered by `tests/test_amber_restart_box.py`; mutation-verified.
 - **A single failed trial no longer kills the whole run.** The swarm exists
   because short segments are unreliable — integrators go unstable, MD
   subprocesses get killed, scratch writes fail — and all three engines already
