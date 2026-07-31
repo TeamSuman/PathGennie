@@ -7,6 +7,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **A single failed trial no longer kills the whole run.** The swarm exists
+  because short segments are unreliable — integrators go unstable, MD
+  subprocesses get killed, scratch writes fail — and all three engines already
+  raise `ValueError` from `get_coords` on non-finite coordinates. But the driver's
+  trial loop had no guard, so one casualty out of `max_trial` propagated out of
+  `executor.map` and ended the run, discarding every completed cycle of a
+  multi-hour job. Failed trials are now quarantined (handles released) and the
+  cycle selects from the survivors; a cycle in which *nothing* survives still
+  raises, since that indicates a systematic problem rather than an unlucky
+  segment. The τ2 runner gets the same treatment, falling back to the chosen
+  sampler — the state `reject_worse_tau2` already keeps. The number of
+  quarantined trials is always reported, not gated on verbosity, because silently
+  dropping trials would change the effective swarm size without the user knowing.
+  Covered by `tests/test_driver_trial_quarantine.py`; mutation-verified.
 - **Checkpoints are written through the writer thread's own file handle.**
   `save_checkpoint` opened the HDF5 file a second time while the writer thread
   still had it open. That is not a supported pattern — it worked only because

@@ -163,13 +163,34 @@ class PathGennieDriver:
 
         cycle_seeds: List[int] = []
 
-        def worker(trial_index: int, device: Optional[int]) -> TrialResult:
-            handle = self.engine.clone_anchor(anchor)
-            seg = self.engine.run_segment(
-                handle, tau1, randomize_velocities=True, seed=cycle_seeds[trial_index], device=device
-            )
-            coords = self.engine.get_coords(seg)
-            cv, metric = self._evaluate(coords, cycle=cycle)
+        def worker(trial_index: int, device: Optional[int]) -> Optional[TrialResult]:
+            # A swarm exists because short segments are unreliable: integrators go
+            # unstable, MD subprocesses get killed, scratch writes fail. Letting one
+            # casualty out of `max_trial` propagate would discard every completed
+            # cycle of a multi-hour run, so a failed trial is quarantined and the
+            # cycle proceeds on the survivors. A cycle in which *nothing* survives
+            # is a real failure and is raised below.
+            handle = None
+            seg = None
+            try:
+                handle = self.engine.clone_anchor(anchor)
+                seg = self.engine.run_segment(
+                    handle, tau1, randomize_velocities=True,
+                    seed=cycle_seeds[trial_index], device=device,
+                )
+                coords = self.engine.get_coords(seg)
+                cv, metric = self._evaluate(coords, cycle=cycle)
+            except Exception as exc:  # noqa: BLE001 - one trial, not the run
+                for stray in (seg, handle):
+                    if stray is not None:
+                        try:
+                            self.engine.release(stray)
+                        except Exception:  # noqa: BLE001 - already failing
+                            pass
+                if self.verbosity:
+                    print(f"Cycle {cycle}: trial {trial_index} quarantined "
+                          f"({type(exc).__name__}: {exc})")
+                return None
             # The cloned anchor was only the *input* to this segment; run_segment
             # returned a fresh handle (seg), so release the clone now. Otherwise
             # one clone (a scratch restart file for AMBER/GROMACS, a cache entry
@@ -179,6 +200,7 @@ class PathGennieDriver:
             return TrialResult(handle=seg, cv=cv, metric=metric, coords=coords, device=device)
 
         converged_at: Optional[int] = None
+        n_quarantined = 0
         for cycle in range(start_cycle, max_cycle):
             previous_anchor = anchor
 
@@ -187,7 +209,17 @@ class PathGennieDriver:
             # scheduling (numpy's Generator is not thread-safe). This makes a
             # seeded run reproducible under ThreadDevicePool, matching Serial.
             cycle_seeds = [self._seed() for _ in range(max_trial)]
-            trials = self.executor.map(worker, list(range(max_trial)))
+            all_trials = self.executor.map(worker, list(range(max_trial)))
+            trials = [t for t in all_trials if t is not None]
+            if not trials:
+                raise RuntimeError(
+                    f"all {max_trial} trials failed at cycle {cycle}; the run cannot "
+                    "continue. Quarantining individual trials is deliberate, but a "
+                    "wholly failed cycle indicates a systematic problem (bad "
+                    "topology, missing executable, exhausted scratch) rather than an "
+                    "unlucky segment."
+                )
+            n_quarantined += len(all_trials) - len(trials)
             metrics = np.array([t.metric for t in trials], dtype=float)
             chosen_idx = softmax_select(metrics, self.sigma, self.rng)
             chosen = trials[chosen_idx]
@@ -197,15 +229,39 @@ class PathGennieDriver:
             if tau2_device is None:
                 tau2_device = self.executor.devices[0]
             tau2_seed = self._seed()
-            tau2_handle = self.engine.run_segment(
-                chosen.handle, tau2, randomize_velocities=False,
-                seed=tau2_seed, device=tau2_device,
-            )
-            tau2_coords = self.engine.get_coords(tau2_handle)
-            tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
+            # The runner can fail for the same reasons a sampler can. Unlike a
+            # sampler it is not one of N, so there is nothing to select among --
+            # but the chosen sampler is itself a valid, already-scored state, so
+            # fall back to it. That is exactly the state reject_worse_tau2 keeps
+            # when the runner merely comes out worse.
+            tau2_handle = None
+            try:
+                tau2_handle = self.engine.run_segment(
+                    chosen.handle, tau2, randomize_velocities=False,
+                    seed=tau2_seed, device=tau2_device,
+                )
+                tau2_coords = self.engine.get_coords(tau2_handle)
+                tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
+                tau2_failed = False
+            except Exception as exc:  # noqa: BLE001 - one runner, not the run
+                if tau2_handle is not None:
+                    try:
+                        self.engine.release(tau2_handle)
+                    except Exception:  # noqa: BLE001 - already failing
+                        pass
+                tau2_handle = None
+                tau2_failed = True
+                n_quarantined += 1
+                if self.verbosity:
+                    print(f"Cycle {cycle}: runner quarantined "
+                          f"({type(exc).__name__}: {exc}); keeping the chosen sampler")
 
             # ---- candidate selection (optional rejection of a worse runner) ----
-            if self.reject_worse_tau2 and tau2_metric < chosen.metric:
+            if tau2_failed:
+                cand_handle, cand_coords, cand_cv, cand_metric = (
+                    chosen.handle, chosen.coords, chosen.cv, chosen.metric,
+                )
+            elif self.reject_worse_tau2 and tau2_metric < chosen.metric:
                 cand_handle, cand_coords, cand_cv, cand_metric = (
                     chosen.handle, chosen.coords, chosen.cv, chosen.metric,
                 )
@@ -312,6 +368,11 @@ class PathGennieDriver:
                     print(f"Converged at cycle {cycle}")
                 break
 
+        if n_quarantined:
+            # Always reported, not gated on verbosity: silently dropping trials
+            # would change the effective swarm size without the user knowing.
+            print(f"Note: {n_quarantined} trial(s) were quarantined after failing; "
+                  "the affected cycles selected from fewer samplers.")
         if self.verbosity:
             tail = f" (converged at {converged_at})" if converged_at is not None else ""
             print(f"Final metric: {anchor_metric:.4f}{tail}")

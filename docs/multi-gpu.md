@@ -41,7 +41,38 @@ pathgennie:
 ```
 
 `workers_per_device` allows more than one concurrent segment per GPU (useful when
-a single small system cannot saturate a card). The legacy `tau1_workers` key is
+a single small system cannot saturate a card).
+
+!!! warning "The context pool does nothing without CUDA MPS"
+
+    Measured on one A100 with solvated alanine dipeptide (~2.5k atoms), sweeping
+    `workers_per_device` from 1 to 32:
+
+    | workers/device | MPS off | MPS on | gain |
+    | --- | --- | --- | --- |
+    | 1 | 8.60 cyc/s | 8.95 | 1.04x |
+    | 2 | 7.67 | 13.79 | 1.80x |
+    | 4 | 9.01 | 20.12 | 2.23x |
+    | **8** | 8.97 | **23.47** | **2.61x** |
+    | 16 | 8.85 | 23.17 | 2.62x |
+    | 32 | 8.74 | 23.16 | 2.65x |
+
+    **Without MPS the pool is flat** — 7.7-9.0 cycles/s whatever you set. The CUDA
+    driver serializes kernels from separate contexts in one process, so extra
+    Contexts wait rather than overlap. With MPS the same sweep reaches **2.7x** the
+    single-worker baseline and saturates at **8 workers**; beyond that there is
+    nothing further to gain.
+
+    Start MPS inside the job script before the run:
+
+    ```bash
+    export CUDA_MPS_PIPE_DIRECTORY=$PWD/mps_pipe CUDA_MPS_LOG_DIRECTORY=$PWD/mps_log
+    mkdir -p $CUDA_MPS_PIPE_DIRECTORY $CUDA_MPS_LOG_DIRECTORY
+    nvidia-cuda-mps-control -d
+    ```
+
+    Setting `workers_per_device: 20` without MPS buys nothing; it is not a
+    misconfiguration, it simply has no effect. The legacy `tau1_workers` key is
 still accepted as an alias.
 
 ## In Python
