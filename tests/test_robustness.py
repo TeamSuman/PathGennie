@@ -36,15 +36,25 @@ def test_hdf5_writer_error_is_surfaced(tmp_path):
 
 def test_pathrefinement_base_import_without_optional_deps():
     # `import pathrefinement` must succeed even without torch/openmm, exposing
-    # the dependency-free primitives; the refiner is only imported on access.
+    # the dependency-free primitives; heavy pieces load lazily on access.
     import pathrefinement
 
     assert pathrefinement.PathCV is not None
     assert pathrefinement.PrincipalCurve is not None
 
-    if importlib.util.find_spec("torch") is None:
+    # PathRefiner deliberately no longer needs torch to be reachable: torch
+    # arrives via ensemblerefiner and is imported inside refine(), where the NN
+    # consensus step actually uses it. Constructing a refiner and driving it with
+    # an injected sampler -- the engine-agnostic path that makes QM/MM refinement
+    # possible -- must work on a base install.
+    assert pathrefinement.PathRefiner is not None
+
+    # The OpenMM-backed analytic potentials are the pieces that genuinely cannot
+    # load without an optional dependency, so the lazy-loading guarantee is
+    # pinned on them instead.
+    if importlib.util.find_spec("openmm") is None:
         with pytest.raises(ImportError):
-            _ = pathrefinement.PathRefiner
+            _ = pathrefinement.MullerBrownPotential
 
 
 def test_checkpoint_metadata_roundtrip(tmp_path):
