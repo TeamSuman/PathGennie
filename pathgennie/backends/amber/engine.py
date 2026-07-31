@@ -165,10 +165,29 @@ class CoreAmberEngine:
             raise RuntimeError("\n".join(message)) from exc
 
         result_handle = str(out_rst)
-        if save_subframes and traj_nc.exists():
-            subframes = read_native_trajectory(traj_nc, topology=self.topology)
-            return result_handle, subframes
+        if save_subframes:
+            # The protocol says the return *changes shape* when subframes are
+            # requested, and the driver unpacks unconditionally. Returning a bare
+            # handle when the trajectory is missing makes that unpack raise on a
+            # path string. A missing file is mundane -- a stride longer than the
+            # segment leaves sander with nothing to write -- so return an empty
+            # block instead and keep the contract.
+            if traj_nc.exists():
+                return result_handle, read_native_trajectory(traj_nc, topology=self.topology)
+            return result_handle, self._empty_subframes(result_handle)
         return result_handle
+
+    def _empty_subframes(self, handle) -> np.ndarray:
+        """A correctly shaped ``(0, n_atoms, 3)`` block.
+
+        Shaped rather than ``(0, 0, 3)`` so it can still be concatenated with real
+        subframe blocks, which match on axis 1.
+        """
+        try:
+            n_atoms = int(np.asarray(read_rst7_coords(handle)).reshape(-1, 3).shape[0])
+        except Exception:
+            n_atoms = 0
+        return np.empty((0, n_atoms, 3), dtype=np.float32)
 
     def get_coords(self, handle):
         coords = read_rst7_coords(handle)

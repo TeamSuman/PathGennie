@@ -57,6 +57,17 @@ class Engine(Protocol):
         every ``subframe_stride`` integrator steps and the return changes to
         ``(Handle, subframes)`` where ``subframes`` is an
         ``(n_subframes, n_atoms, 3)`` array in Ångström.
+
+        The tuple is returned **whenever ``save_subframes`` is True**, even if no
+        frames were captured; ``subframes`` is then empty with a valid shape.
+        Callers unpack unconditionally, so returning a bare handle here would make
+        that unpack raise -- on the subprocess backends a handle is a file path,
+        which unpacks as characters or not at all.
+
+        Engines may differ on the tail: with a stride longer than the segment,
+        OpenMM steps in ``min(stride, remaining)`` chunks and captures the segment
+        end, while the toy engine's strict modulo captures nothing. Both are
+        acceptable; do not rely on the exact frame count.
         """
         ...
 

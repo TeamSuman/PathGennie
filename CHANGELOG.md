@@ -7,6 +7,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **`run_segment` broke its own return contract on the subprocess backends.** The
+  `Engine` protocol states that when `save_subframes` is True the return "changes
+  to `(Handle, subframes)`", and the driver unpacks unconditionally. AMBER and
+  GROMACS returned that tuple only when the trajectory file *existed*, falling
+  through to a bare handle otherwise — and a handle there is a file path, so the
+  unpack raises `ValueError` and kills the run. The trigger is mundane: a
+  `subframe_stride` longer than the segment leaves the MD engine with nothing to
+  write, so it may not create the file at all. Both backends now always return the
+  tuple, with a correctly shaped `(0, n_atoms, 3)` empty block that stays
+  concatenable with real ones. The toy and OpenMM engines were already correct.
+  The protocol docstring now also records that engines may differ on the tail —
+  OpenMM steps in `min(stride, remaining)` chunks and captures the segment end,
+  the toy engine's strict modulo captures nothing — so callers must not rely on an
+  exact frame count. Covered by `tests/test_run_segment_return_contract.py`;
+  mutation-verified.
 - **Resuming from a checkpoint duplicated trajectory frames.** Frames stream every
   `save_freq` cycles but checkpoints are written only every `checkpoint_freq`
   cycles, so a crash between two checkpoints — the case checkpointing exists for —

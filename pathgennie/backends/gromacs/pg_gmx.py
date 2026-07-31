@@ -236,11 +236,24 @@ class CoreGromacsEngine:
 
         result_handle = str(out_gro)
         if save_subframes:
+            # The protocol says the return *changes shape* when subframes are
+            # requested, and the driver unpacks unconditionally. Falling through to
+            # a bare handle when the .xtc is missing makes that unpack raise on a
+            # path string. A stride longer than the segment leaves mdrun with
+            # nothing to write, so return an empty block and keep the contract.
             traj_xtc = prefix.with_suffix(".xtc")
             if traj_xtc.exists():
-                subframes = read_native_trajectory(traj_xtc)
-                return result_handle, subframes
+                return result_handle, read_native_trajectory(traj_xtc)
+            return result_handle, self._empty_subframes(result_handle)
         return result_handle
+
+    def _empty_subframes(self, handle: str) -> np.ndarray:
+        """A correctly shaped ``(0, n_atoms, 3)`` block, concatenable with real ones."""
+        try:
+            n_atoms = int(np.asarray(self.get_coords(handle)).reshape(-1, 3).shape[0])
+        except Exception:
+            n_atoms = 0
+        return np.empty((0, n_atoms, 3), dtype=np.float32)
 
     def get_coords(self, handle: str) -> np.ndarray:
         coords = read_gro_coords(handle)
