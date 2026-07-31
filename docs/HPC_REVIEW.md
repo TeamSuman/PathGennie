@@ -73,7 +73,7 @@ hardening work here is layered on top as clean, single-purpose commits.
 | 10 | Low | `README.md` | Committed merge-conflict markers; stale example table (OAMe-G2); reference to a deleted config (`input_c7eq.yaml`). | Resolved/updated; config reference expanded with the HPC keys. |
 | 11 | New (HPC) | `pathgennie` config + engines | No control over CPU thread count → concurrent CPU segments each grabbed all cores. | `cpu_threads_per_worker` pins OMP/MKL threads and GROMACS `-ntomp`. |
 
-All fixes verified by `pytest` (90 passed, 2 skipped for absent torch/openmm) and
+All fixes verified by `pytest` (192 passed, 2 skipped for absent torch/openmm) and
 by `tests/hpc/hpc_selfcheck.py`.
 
 ---

@@ -20,7 +20,7 @@ development plan.
 | Path sampling (TPS/TIS) bridge | `sampling/path_sampling.py` | seed prep / reactive-path extraction / interfaces (OPS run needs the `pathsampling` extra) |
 | Downstream wiring | `sampling/runner.py`, backends | toy `run_downstream` test |
 
-Run `pytest -q` to reproduce (69 tests; SPIB tests need the `ml` extra).
+Run `pytest -q` to reproduce (192 tests; SPIB tests need the `ml` extra).
 
 ## Environment caveats (not runnable in a CPU-only sandbox)
 

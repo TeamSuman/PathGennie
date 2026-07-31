@@ -69,7 +69,7 @@ pip install -e .[examples]  # + ParmEd for some example setups
 Run the test suite to confirm a working install:
 
 ```bash
-pytest -q                   # 47 tests; SPIB tests skip if torch is absent
+pytest -q                   # 192 tests; SPIB tests skip if torch is absent
 ```
 
 ## The 60-second mental model

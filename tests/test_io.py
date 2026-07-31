@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import os
+import shutil
+
 import pytest
+import yaml
 import numpy as np
 
 from pathgennie.backends.amber.utils import (
@@ -126,22 +130,71 @@ def test_read_native_trajectory_roundtrip(tmp_path):
     np.testing.assert_allclose(read_back, frames, atol=1e-2)
 
 
-def test_overwrite_check_logic(tmp_path):
-    """Verify that when overwrite is False and an output file exists, FileExistsError is raised."""
-    out_dir = tmp_path / "output"
-    out_dir.mkdir()
-    traj_file = out_dir / "reactive_path.pdb"
-    traj_file.write_text("existing content")
+def _overwrite_case(tmp_path, existing_names, cfg_extra=None):
+    """A case complete enough that ``run()`` reaches the overwrite guard.
 
-    pg_cfg = {"overwrite": False}
-    overwrite = pg_cfg.get("overwrite", False)
+    ``run()`` validates the executable and input files *before* the guard, so a
+    skeleton directory fails earlier for an unrelated reason. ``/bin/echo`` stands
+    in for the MD binary -- nothing is propagated, because the guard raises before
+    the driver starts.
+    """
+    case = tmp_path / "case"
+    (case / "output").mkdir(parents=True)
+    shutil.copy(PRMTOP, case / "x.prmtop")
+    shutil.copy(REPO / "examples/alanine_dipeptide/amber/ala_dipeptide_equilibrated.rst7",
+                case / "x.rst7")
+    (case / "p.py").write_text(
+        "import numpy as np\n"
+        "def f(coords, **kw):\n    return np.array([float(coords[0, 0])])\n"
+        "def g(coords, **kw):\n    return False\n"
+    )
+    for name in existing_names:
+        (case / "output" / name).write_text("existing content")
+    cfg = {
+        "amber": {"topology": "x.prmtop", "initial_restart": "x.rst7",
+                  "executable": "/bin/echo"},
+        "pathgennie": {"mode": "escape", "tau1_steps": 1, "tau2_steps": 1,
+                       "max_trial": 1, "max_cycle": 1},
+        "projection": {"module": "p", "function": "f"},
+        "convergence": {"module": "p", "function": "g"},
+        "workdir": ".",
+    }
+    cfg["pathgennie"].update(cfg_extra or {})
+    (case / "input.yaml").write_text(yaml.safe_dump(cfg))
+    return case
 
-    existing = [p for p in [traj_file] if p.exists()]
-    if not overwrite and existing:
-        with pytest.raises(FileExistsError):
-            names = ", ".join(str(p) for p in existing)
-            raise FileExistsError(f"Output file(s) already exist: {names}")
 
+def test_existing_output_raises_without_overwrite(tmp_path):
+    """The guard must come from pg_amber.run, not from the test.
+
+    The previous version rebuilt the condition inline and then raised
+    FileExistsError itself inside pytest.raises -- it would have passed with the
+    feature deleted. This calls the real entrypoint.
+    """
+    from pathgennie.backends.amber import pg_amber
+
+    case = _overwrite_case(tmp_path, ["reactive_path.pdb"])
+    cwd = os.getcwd()
+    try:
+        with pytest.raises(FileExistsError, match="already exist"):
+            pg_amber.run(case, "input.yaml")
+    finally:
+        os.chdir(cwd)
+
+
+def test_overwrite_true_gets_past_the_guard(tmp_path):
+    """With overwrite set the run must fail *later*, not on the guard."""
+    from pathgennie.backends.amber import pg_amber
+
+    case = _overwrite_case(tmp_path, ["reactive_path.pdb"], {"overwrite": True})
+    cwd = os.getcwd()
+    try:
+        with pytest.raises(Exception) as info:
+            pg_amber.run(case, "input.yaml")
+        assert not isinstance(info.value, FileExistsError), \
+            "overwrite: true must not trip the existing-output guard"
+    finally:
+        os.chdir(cwd)
 
 
 def test_prmtop_readers_accept_str_paths():

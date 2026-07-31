@@ -1,7 +1,7 @@
 # PathGennie Future Roadmap
 
 > **Purpose.** A static, forward-looking plan to evolve PathGennie from a working
-> adaptive-sampling toolkit (v0.2.0) into a globally competitive, cutting-edge
+> adaptive-sampling toolkit (1.3.0) into a globally competitive, cutting-edge
 > enhanced-sampling **framework** comparable to PLUMED and WESTPA.
 >
 > **Scope.** This document is strategy and design intent — not a commitment of
@@ -29,7 +29,7 @@ WESTPA on weighted-ensemble plumbing. Its defensible, differentiated niche is an
 
 ## Competitive gap snapshot
 
-| Capability | v0.2.0 | PLUMED | WESTPA | Target tier |
+| Capability | 1.3.0 | PLUMED | WESTPA | Target tier |
 |---|---|---|---|---|
 | Parallelism | single-node threads | MPI/replica | work managers, multi-node | T1 |
 | Persistence / restart | none | COLVAR/STATE | HDF5 + checkpoint | T1 |
@@ -176,7 +176,7 @@ WESTPA on weighted-ensemble plumbing. Its defensible, differentiated niche is an
   disk-space guards.
 - **Performance:** vectorized selection/binning, pinned float32 buffers, avoid
   OpenMM XML state serialization, batched CV evaluation.
-- **API stability:** semantic versioning + a deprecation policy now that v0.2.0
+- **API stability:** semantic versioning + a deprecation policy now that 1.3.0
   fixes the core protocols.
 
 ## Priority queue — the first five

@@ -154,6 +154,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the previous behaviour, so distance and PCA CVs are unaffected.
 
 ### Changed
+- **Release consolidation.** `ROADMAP.md` claimed v0.2.0 while the package is
+  1.3.0; `mkdocs.yml` still carried `yourusername` placeholders in `site_url`
+  and `repo_url`, so the published docs pointed at a non-existent site; and four
+  documents quoted four different test counts (96 / 47 / 69 / 90) against an
+  actual 192.
+- **`test_overwrite_check_logic` replaced.** It rebuilt the overwrite condition
+  inline and then raised `FileExistsError` *itself* inside `pytest.raises`, so it
+  exercised none of the production code and would have passed with the feature
+  deleted. It now drives `pg_amber.run` against a case complete enough to reach
+  the guard, plus a companion asserting `overwrite: true` gets past it.
+  Mutation-verified: deleting the guard now fails the test.
 - **`escape_metric` is honoured by all three backends and shares one default.**
   OpenMM previously hardcoded `distance_from_start` while AMBER and GROMACS
   defaulted to the legacy `cv0`, so an identical `input.yaml` optimised a

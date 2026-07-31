@@ -69,7 +69,7 @@ pathrefinement/  Path CVs (Branduardi s/z) + ensemble principal-curve path
                  refiner, with Muller-Brown / AlaD / CLN025 examples
 we/              Standalone Huber-Kim Weighted Ensemble framework (wepath)
 docs/           Manual + tutorials (start at docs/index.md)
-tests/          pytest suite (96 tests; selection, CV, I/O, device dispatch,
+tests/          pytest suite (192 tests; selection, CV, I/O, device dispatch,
                 SPIB, RRT, roadmap, controller, WE, config, HPC parallel safety)
   hpc/          PBS + Slurm submission scripts + self-check for cluster testing
 benchmarks/
