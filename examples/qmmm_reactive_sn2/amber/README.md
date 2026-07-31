@@ -14,6 +14,7 @@ This is the reference for the complete pipeline:
 | 2. Refine | `2_refine_pathcv.py` | one smooth path → a `PathCV` (`s`, `z`) |
 | 3. Free energy | `3_free_energy.py` | *F*(`s`) along that PathCV, by Weighted Ensemble |
 | 4. Plot | `4_plot_2d_cv.py` | the paths on the 2-D distance plane |
+| 5. Check | `5_neb_reference.py` | an independent NEB reference path + a DFT barrier |
 
 Every stage runs the **same QM Hamiltonian**. That is not a stylistic choice: a path refined at a
 different level of theory than it was discovered at, or a free energy computed at a third level, is
@@ -161,6 +162,49 @@ Mechanisms separate visually on this plane: S<sub>N</sub>2 crosses the diagonal 
 line; S<sub>N</sub>1 detours through the top-right corner (both bonds long — a free carbocation)
 before the new bond forms; eliminations never reach short d(C–X) at all. Overlay a second substrate
 with `--extra 'tert-butyl (E2)=path.npy'`.
+
+## Stage 5 — check it against something that shares no machinery
+
+```bash
+python 5_neb_reference.py --beads 16 --rescore     # ~2 min total
+```
+
+Stages 1–3 produce a path and a free energy by *sampling*. This computes the minimum-energy path a
+completely different way — a nudged elastic band — **at the same level of theory**, so the comparison
+measures the path rather than the method. Then it re-scores the relaxed geometries at DFT.
+
+Needs `sander.MPI` and `mpirun`; `--rescore` also needs `quick`.
+
+Measured on this system:
+
+| level | barrier | TS mean d(C–Cl) |
+| --- | --- | --- |
+| DFTB3 (the sampling Hamiltonian) | 3.56 kcal/mol | 2.3558 Å |
+| B3LYP/6-31+G\* // DFTB3 | **8.23 kcal/mol** | (same geometries) |
+| CCSD(T) reference | ≈13 kcal/mol | — |
+
+**DFTB3 gets the geometry, not the barrier.** The TS it finds agrees with an independent
+symmetric-stretch scan to **0.0007 Å**, but its barrier is ~4× too small. Re-scoring the same
+geometries at DFT more than doubles it; the residual gap is the known B3LYP underestimate for
+anionic S<sub>N</sub>2. So: **discover and refine at DFTB3, then re-score the band** — that last step
+costs 90 seconds, not a new campaign. Note this is `DFT//DFTB3`, a single point on a DFTB3 geometry,
+not a DFT-optimised path.
+
+And the payoff for the whole workflow — distance to the NEB path in the CV plane:
+
+| path | mean | max |
+| --- | --- | --- |
+| initial (seed consensus) | 0.059 Å | 0.086 Å |
+| **refined PathCV** | **0.044 Å** | **0.066 Å** |
+
+Refinement moves the path measurably *closer* to an independently computed MEP rather than merely
+smoothing it. Overlay them with
+`python 4_plot_2d_cv.py --extra 'NEB MEP=results/neb/neb_path_2d.npy'`.
+
+> **Do not raise `maxcyc` in the endpoint minimisation.** The gas-phase ion–dipole minimum is
+> shallow; at `maxcyc=500` the conjugate-gradient phase walks the product endpoint apart to
+> d(C–Cl) ≈ 900 Å, and the whole band relaxes into nonsense. A dissociated endpoint still writes a
+> perfectly valid restart file, so the script checks the *geometry*, not just that the file exists.
 
 ## A caution on convergence criteria
 

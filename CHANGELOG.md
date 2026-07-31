@@ -112,6 +112,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a bare stub, OpenMM, and protocol conformance for AMBER and GROMACS.
   `examples/path_refinement_engines/refine_with_engine.py` runs identical
   refinement code against all four backends.
+- **Independent NEB reference stage** (`examples/qmmm_reactive_sn2/amber/5_neb_reference.py`):
+  relaxes a nudged elastic band at the *same* level of theory as the sampling, then
+  optionally re-scores the relaxed geometries at DFT via QUICK. On the shipped
+  S<sub>N</sub>2 case it reproduces a 3.56 kcal/mol DFTB3 barrier with the TS
+  geometry matching an independent symmetric-stretch scan to 0.0007 A, and an
+  8.23 kcal/mol B3LYP/6-31+G* barrier on the same geometries, in ~2 minutes. It
+  also quantifies the refined PathCV against the NEB path in the CV plane
+  (0.044 A mean, versus 0.059 A for the unrefined seed consensus), which is the
+  workflow's end-to-end check.
 - **Complete reactive QM/MM workflow** (`examples/qmmm_reactive_sn2/amber`, plus
   `docs/qmmm-workflow.md`): bond-breaking/forming path discovery → refinement
   into a PathCV → free energy along `s` by Weighted Ensemble → 2-D mechanism

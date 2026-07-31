@@ -135,6 +135,9 @@ started entirely in the reactant well spends its whole budget crawling out.
 
 ### 4. Validate against an independent reference
 
+`5_neb_reference.py` in the worked example does both of the following in ~2 minutes
+(`--beads 16 --rescore`).
+
 Two checks are worth the cost:
 
 - **A transition state from an independent method.** A constrained
@@ -151,6 +154,32 @@ Two checks are worth the cost:
 > take the **minimum** of the scanned energy, not the maximum. A saddle point is a
 > maximum along the reaction coordinate but a **minimum** along every orthogonal
 > one, and the symmetric stretch is orthogonal.
+
+### Semiempirical geometry, DFT energetics
+
+Measured on the S<sub>N</sub>2 case, all on the same 16-bead NEB band:
+
+| level | barrier | TS geometry |
+| --- | --- | --- |
+| DFTB3 | 3.56 kcal/mol | 2.3558 Å — matches an independent scan to **0.0007 Å** |
+| B3LYP/6-31+G\* // DFTB3 | 8.23 kcal/mol | (single points on the same geometries) |
+| CCSD(T) reference | ≈13 kcal/mol | — |
+
+**DFTB3 gets the structure right and the barrier wrong** — about fourfold low here, which is typical
+of semiempirical methods for S<sub>N</sub>2. Re-scoring the relaxed geometries at DFT more than
+doubles the barrier and costs ~90 s for 16 single points; the residual gap is the known B3LYP
+underestimate for anionic transition states. This is what makes the two-tier design work: sample
+where geometry matters and cost is 20 ms/step, then re-score once at the end.
+
+Two things to keep straight: `DFT//DFTB3` is a single point on someone else's geometry, not a DFT
+minimum-energy path; and **diffuse functions are not optional** for an anionic reaction — use at
+least `6-31+G*`.
+
+> **Watch shallow gas-phase minima during endpoint preparation.** Minimising the S<sub>N</sub>2
+> product endpoint for 500 cycles instead of 300 dissociated the ion–dipole complex to
+> d(C–Cl) ≈ 900 Å — and still wrote a perfectly valid restart file, which then poisoned the entire
+> band with no error raised anywhere. Check the *geometry* a stage produces, not just that it
+> produced a file.
 
 ## Convergence criteria: drive on progress, stop on product
 
