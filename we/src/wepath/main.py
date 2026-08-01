@@ -30,6 +30,12 @@ class WESS(WeightedEnsembleBase):
         self.n_steps_per_tau = self.config.get('n_steps_per_tau')     # MD steps per WE iteration
         self.n_iterations = self.config.get('n_iterations', 10)       # Number of WE iterations
         self.dt = self.config.get('dt', 0.002)                        # Time step (ps)
+        # tau is the WE iteration length -- the time each walker is propagated
+        # between resampling events. Every rate this code reports is a flux
+        # DIVIDED BY TAU, so recording it explicitly is what makes the rate
+        # reproducible instead of something reconstructed by hand afterwards.
+        self.tau = (self.dt * self.n_steps_per_tau
+                    if self.n_steps_per_tau is not None else None)
         self.n_gpus = self.config.get('n_gpus', 1)                    # Number of GPUs to use
 
         # Advanced WE settings
@@ -77,7 +83,8 @@ class WESS(WeightedEnsembleBase):
         self.walkers = []
         self.total_flux_matrix = np.zeros((self.n_total_bins, self.n_total_bins))
         self.total_flux_to_target = 0.0
-        self.flux_history = []
+        self.flux_history = []      # per-iteration flux (probability, dimensionless)
+        self.rate_history = []      # per-iteration rate (flux / tau, units 1/time)
         self.all_lineage_maps = []
         self.all_history = []
 
@@ -90,7 +97,6 @@ class WESS(WeightedEnsembleBase):
         """Executes the entire WESS simulation workflow with incremental disk saving."""
         try:
             start_time = time.perf_counter()
-            TAU = self.dt * self.n_steps_per_tau
             self.resampling_history = {}
             self.warping_history = {}
 

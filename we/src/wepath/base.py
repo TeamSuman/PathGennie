@@ -78,10 +78,14 @@ class WeightedEnsembleBase:
     def _log_iteration_data(self, i, flux_this_iter, files):
         """Writes simulation data for the current iteration to files."""
         self.total_flux_to_target += flux_this_iter
-        flux_rate = flux_this_iter #/ TAU if TAU > 0 else 0
-        self.flux_history.append(flux_rate) # FIX: Uncommented to actually track history
-        #files['flux_f'].write(f"{flux_rate}\n")
-        #1files['flux_f'].flush()
+        # `flux_this_iter` is a probability per iteration (dimensionless). The rate
+        # is that divided by tau. The division used to be commented out and TAU was
+        # a dead local in main.run(), so `flux_history` held FLUXES under the name
+        # `flux_rate` and no rate was ever computed in code -- it was reconstructed
+        # by hand afterwards, along with the choice of averaging window.
+        self.flux_history.append(flux_this_iter)
+        tau = getattr(self, "tau", None)
+        self.rate_history.append(flux_this_iter / tau if tau else float("nan"))
 
         # Bin probabilities
         bin_probabilities = np.zeros(self.n_total_bins)
@@ -101,6 +105,57 @@ class WeightedEnsembleBase:
 
         print(f"Iter {i+1}/{self.n_iterations}, Walkers: {len(self.walkers)}, "
               f"Flux: {flux_this_iter:.4e}, Total Flux: {self.total_flux_to_target:.4e}")
+
+    def rate_estimate(self, burn_in=0.5):
+        """Steady-state rate constant from the flux history.
+
+        Weighted Ensemble flux is a rate only once the walker distribution has
+        reached steady state; averaging from iteration zero mixes in the transient
+        while the ensemble is still filling the bins. ``burn_in`` discards the
+        leading window -- a float in (0, 1) is a fraction of the run, an int is a
+        count -- matching ``WeightedEnsembleStage``'s convention.
+
+        Returns a dict with ``rate``, ``stderr``, the window used, and a
+        ``steady_state`` flag comparing the two halves of the retained window. The
+        flag is a diagnostic, not a guarantee: it can only detect drift large
+        relative to the scatter, and it reports ``False`` rather than raising so a
+        caller still gets the number together with the warning.
+        """
+        import numpy as _np
+
+        # getattr: rate_estimate is public and may be called on an object whose
+        # __init__ did not complete (the bin config raises before the histories
+        # are set up), and a missing attribute there should read as 'no data'.
+        hist = _np.asarray(getattr(self, "rate_history", []), dtype=float)
+        n = len(hist)
+        if n == 0:
+            return {"rate": float("nan"), "stderr": float("nan"), "n_used": 0,
+                    "burn_in": 0, "steady_state": False,
+                    "note": "no iterations recorded"}
+        if isinstance(burn_in, float) and 0.0 < burn_in < 1.0:
+            n_burn = int(round(burn_in * n))
+        else:
+            n_burn = int(burn_in)
+        # Never discard everything: a biased estimate beats no estimate, as long
+        # as the burn-in actually used is reported alongside it.
+        n_burn = min(max(n_burn, 0), max(0, n - 1))
+        w = hist[n_burn:]
+        finite = w[_np.isfinite(w)]
+        if finite.size == 0:
+            return {"rate": float("nan"), "stderr": float("nan"), "n_used": 0,
+                    "burn_in": n_burn, "steady_state": False,
+                    "note": "tau not set, so no rate could be formed"}
+        rate = float(finite.mean())
+        stderr = float(finite.std(ddof=1) / _np.sqrt(finite.size)) if finite.size > 1 else float("nan")
+        half = finite.size // 2
+        steady = True
+        if half >= 2:
+            a, b = finite[:half], finite[half:]
+            se = _np.sqrt(a.var(ddof=1) / a.size + b.var(ddof=1) / b.size)
+            steady = bool(se == 0 or abs(b.mean() - a.mean()) <= 2 * se)
+        return {"rate": rate, "stderr": stderr, "n_used": int(finite.size),
+                "burn_in": n_burn, "steady_state": steady,
+                "tau": getattr(self, "tau", None)}
 
     def _save_h5_data(self, iteration_id: int):
         """

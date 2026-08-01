@@ -6,6 +6,24 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`we` (wepath) never computed a rate constant in code.** Each iteration was logged as
+  `flux_rate = flux_this_iter #/ TAU if TAU > 0 else 0` — the division by tau commented
+  out — while `TAU = self.dt * self.n_steps_per_tau` sat in `WESS.run()` as a **dead
+  local**, assigned once and never referenced. So `flux_history` held per-iteration
+  *fluxes* (dimensionless probability) under the name `flux_rate`, and the rate constant
+  was reconstructed by hand afterwards together with the choice of averaging window —
+  the "inspection-based window" objection raised against the pathway-kinetics work.
+  `tau` is now stored on the object (so a reported rate is reproducible instead of
+  depending on remembering `dt x n_steps_per_tau`, a value that has already been
+  ambiguous once here, and every rate scales as 1/tau); `flux_history` keeps the raw
+  flux; `rate_history` carries `flux / tau`; and `rate_estimate(burn_in=0.5)` returns the
+  steady-state rate with its standard error, the window actually used, and a
+  `steady_state` flag comparing the two halves of that window. `burn_in` takes a fraction
+  or a count, matching `WeightedEnsembleStage`. A missing `tau` yields NaN rather than a
+  flux mislabelled as a rate. Covered by `tests/test_we_rate_estimator.py`;
+  mutation-verified (all 10 fail against the shipped code).
+
 ### Added
 - **CI lane that installs OpenMM and MDAnalysis (`test-md`).** 11 tests were guarded
   by `pytest.importorskip` and no lane installed either dependency, so they skipped in
