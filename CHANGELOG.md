@@ -7,6 +7,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **Forked conformer workers all drew the same random poses (`ligconfgen`).**
+  `generate_single_conformer` used the global `np.random` and is submitted to a
+  `ProcessPoolExecutor`, whose workers are forked once and so inherit a single copy of
+  the parent RNG state: the first task on each of W workers returned an identical pose,
+  then the second, and so on. Measured with the same machinery — **12 tasks on 4 workers
+  gave 3 distinct results**. The output was *not* corrupted, because `_is_unique` rejects
+  the copies on RMSD; the damage was throughput and silent under-delivery. Only 1 attempt
+  in W did useful work, `n_workers` defaults to `multiprocessing.cpu_count()`, and the
+  loop stops after `num_conformations * max_attempts_factor` attempts — so on a 48-core
+  node the budget was exhausted having produced roughly a fifth of the requested
+  ensemble, reported only as "Finished with N conformations." Each attempt now receives
+  its own seed spawned from a `SeedSequence`; seeding per *worker* would merely move the
+  collision, since one worker handles many attempts. After the fix a 20-conformer request
+  is satisfied 20/20 at both 4 and 8 workers. Note `seed` fixes the sequence of
+  *proposals*, not the returned ensemble: futures are consumed with `FIRST_COMPLETED`, so
+  arrival order — and hence which poses are accepted against the set built so far —
+  still depends on worker timing. Covered by `tests/test_ligconfgen_worker_rng.py`, which
+  also pins the underlying fork/RNG mechanism so the fix cannot be mistaken for cargo
+  cult; mutation-verified.
+
+### Fixed
 - **`pathgennie pcagen` crashed with a bare `ModuleNotFoundError` on a clean install.**
   `pathgennie/utils/ligcvgen.py` imported scikit-learn, matplotlib and joblib at module
   level and **none of the three were declared** in `pyproject.toml` — not as core
