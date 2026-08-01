@@ -96,10 +96,24 @@ class GpuMonitor(threading.Thread):
 def prepare_case(example: Path, backend: str, executable: str, devices, workers,
                  max_cycle, max_trial, cpu_threads, tmp: Path):
     section, _ = BACKENDS[backend]
-    work = tmp / f"pg_hpc_{backend}_{os.getpid()}"
-    if work.exists():
-        shutil.rmtree(work)
+    root = tmp / f"pg_hpc_{backend}_{os.getpid()}"
+    if root.exists():
+        shutil.rmtree(root)
+    # An example's projection.py may load a shared module from a SIBLING directory
+    # (examples/alanine_dipeptide/{amber,gromacs}/projection.py both resolve
+    # `parents[1] / "common" / "phi_psi.py"`). Copying only the backend directory
+    # flattens that away, so the import failed with FileNotFoundError on
+    # `<scratch>/common/phi_psi.py` -- which is why the alanine dipeptide example
+    # named as the DEFAULT in every HPC template could never actually run here.
+    # Stage the example under its own name and bring the siblings it can reference
+    # along at the same relative depth.
+    root.mkdir(parents=True)
+    work = root / example.name
     shutil.copytree(example, work)
+    for sibling in ("common",):
+        src = example.parent / sibling
+        if src.is_dir():
+            shutil.copytree(src, root / sibling)
 
     cfg_path = work / "input.yaml"
     cfg = yaml.safe_load(cfg_path.read_text())

@@ -7,6 +7,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **The HPC harness could not run the example every template names as its default.**
+  `tests/hpc/run_example.py` staged a case with `shutil.copytree(example, work)` — the
+  backend directory only — but `examples/alanine_dipeptide/{amber,gromacs}/projection.py`
+  load their shared CV from a *sibling* directory via
+  `Path(__file__).resolve().parents[1] / "common" / "phi_psi.py"`. Flattening the example
+  into the scratch root put `projection.py` one level too high, so that resolved to
+  `<scratch>/common/phi_psi.py`, which was never copied, and the run died with
+  `FileNotFoundError`. Since all four templates default to
+  `PG_EXAMPLE=examples/alanine_dipeptide/<backend>`, **their default configuration could
+  never work.** It stayed hidden because the templates masked the failure and exited 0
+  regardless (fixed in the same release) — the run died, the job printed "Done", and the
+  exit code said success. The example is now staged under its own name with the siblings
+  it can reference at the same relative depth. Covered by
+  `tests/test_hpc_run_example_staging.py`; mutation-verified.
+
+### Verified
+- **GROMACS multi-GPU actually spreads work across physical GPUs.** Previously only
+  `resolve_cuda_visible_device` was unit-tested; nothing confirmed a real two-GPU run used
+  two cards, and the failure mode is silent (every worker lands on one GPU, the run still
+  completes, at half throughput). Measured on 2 x A100-80GB with GROMACS 2024.3 (CUDA):
+  `devices=[0,1]`, `workers_per_device=2`, `nvidia-smi` compute-app polling reports
+  processes on **both** physical GPUs, run returncode 0.
+
+### Fixed
 - **`we` (wepath) never computed a rate constant in code.** Each iteration was logged as
   `flux_rate = flux_this_iter #/ TAU if TAU > 0 else 0` — the division by tau commented
   out — while `TAU = self.dt * self.n_steps_per_tau` sat in `WESS.run()` as a **dead
