@@ -6,6 +6,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **CI lane that installs OpenMM and MDAnalysis (`test-md`).** 11 tests were guarded
+  by `pytest.importorskip` and no lane installed either dependency, so they skipped in
+  **every** CI run while the suite reported green: all 5 of `test_openmm_engine.py`
+  (the only coverage the in-process OpenMM engine has), the OpenMM cases in
+  `test_sampler_multi_engine.py` and `test_run_segment_return_contract.py`, and the 4
+  MDAnalysis tests in `test_io.py` — MDAnalysis being a *declared hard dependency* that
+  nothing installed. Both are pip-installable, so the lane needs no conda. It asserts
+  the imports succeed, then runs the four files, then re-runs with `-rs` and **fails if
+  anything still reports a dependency skip** — otherwise the lane could silently degrade
+  back into the state it exists to prevent. (The `we`/`wepath` tests were checked and do
+  *not* need a lane: `test_we_weight_conservation.py` puts `we/src` on `sys.path` itself.)
+
 ### Fixed
 - **The HPC job templates reported success when the MD run had failed.** All four
   of `tests/hpc/{slurm_cpu.sbatch,slurm_gpu.sbatch,pbs_cpu.pbs,pbs_gpu.pbs}` ran the

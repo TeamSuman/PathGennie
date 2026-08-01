@@ -46,3 +46,41 @@ jobs:
           pip install -e . --no-deps
       - name: Run CV/SPIB tests (now unskipped)
         run: pytest -q tests/test_spib.py tests/test_cv.py tests/test_features.py
+
+  # MD-dependency lane: installs OpenMM and MDAnalysis so the tests guarded by
+  # `pytest.importorskip` actually execute. Without it 11 tests skip in EVERY lane
+  # and the suite reports green having never constructed an OpenMM Context or read
+  # a trajectory -- including the whole of test_openmm_engine.py, which is the only
+  # coverage the in-process engine has. MDAnalysis is a declared hard dependency
+  # that no lane installed.
+  test-md:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install with OpenMM + MDAnalysis
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pydantic PyYAML h5py pytest
+          pip install openmm MDAnalysis
+          pip install -e . --no-deps
+      - name: Confirm the deps really imported
+        run: |
+          python -c "import openmm; print('openmm', openmm.version.version)"
+          python -c "import MDAnalysis; print('MDAnalysis', MDAnalysis.__version__)"
+      - name: Run the previously-skipped tests
+        run: |
+          pytest -q tests/test_openmm_engine.py tests/test_io.py \
+                    tests/test_sampler_multi_engine.py \
+                    tests/test_run_segment_return_contract.py
+      - name: Fail if anything still skipped for a missing dependency
+        run: |
+          pytest -q -rs tests/test_openmm_engine.py tests/test_io.py \
+                    tests/test_sampler_multi_engine.py \
+                    tests/test_run_segment_return_contract.py 2>&1 | tee /tmp/out
+          if grep -qiE "SKIPPED.*(could not import|requires)" /tmp/out; then
+            echo "A dependency-gated test still skipped in the lane that exists to run it."
+            exit 1
+          fi
