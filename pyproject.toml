@@ -54,6 +54,11 @@ dev = [
 ml = [
   "torch",
 ]
+analysis = [
+  "scikit-learn",
+  "matplotlib",
+  "joblib",
+]
 pathsampling = [
   "openpathsampling",
 ]

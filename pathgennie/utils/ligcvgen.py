@@ -3,10 +3,24 @@ import os
 from typing import Dict, List, Tuple, Optional
 
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler
-import joblib
+try:
+    import matplotlib.pyplot as plt
+    import joblib
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import MinMaxScaler
+except ImportError as _exc:  # pragma: no cover - exercised via the guard tests
+    # matplotlib, joblib and scikit-learn are needed only by the PCA distance-CV
+    # path (`pathgennie pcagen`), which `--help` advertises and docs/pca-cv.md
+    # documents. None were declared, so a clean install failed with a bare
+    # "No module named ...". They are grouped in ONE guard deliberately: the
+    # matplotlib import used to sit above the sklearn check, so whichever package
+    # was missing first decided the (unhelpful) message.
+    raise ImportError(
+        "The PCA distance-CV tools (pathgennie pcagen / LigPCGen) need "
+        "scikit-learn, matplotlib and joblib, which are not core PathGennie "
+        f"dependencies (missing: {_exc.name}).\n"
+        "Install them with:  pip install 'pathgennie[analysis]'"
+    ) from _exc
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import distance_array
 from .ligconfgen import ConformationGenerator, load_system

@@ -163,8 +163,11 @@ direction. Grouped by subsystem.
 - **[OPEN, Med] OpenMM is a hard core dependency** — `pip install pathgennie`
   forces a heavy conda-forge package on AMBER/GROMACS-only users. *Fix:* move to
   an `[openmm]` extra and lazy-import in the backend.
-- **[OPEN, Med] `pcagen` needs scikit-learn, undeclared** → `ModuleNotFoundError`
-  on a clean install. *Fix:* add an `[analysis]` extra.
+- **[FIXED, Med] `pcagen` needs scikit-learn, undeclared** → `ModuleNotFoundError`
+  on a clean install. Now declared as the `[analysis]` extra, and the import site
+  raises a message naming `pip install 'pathgennie[analysis]'` instead of a bare
+  `No module named 'sklearn'`. The CLI already imported it lazily, so only the
+  `pcagen` subcommand was affected, not every command.
 - **[OPEN, Low] Strategy `selection`/`cv` fields are advertised but unconsumed**
   (`SAMPLING` says `selection="beam"`, but the driver only ever does
   `softmax`). The agent controller is likewise unused at runtime. *Fix:* wire the

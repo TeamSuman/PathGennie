@@ -11,9 +11,14 @@ along.
 This is exposed both as a CLI (`pathgennie pcagen`) and programmatically
 (`pathgennie.utils.ligcvgen.LigPCGen`).
 
-> **Dependencies.** This utility uses `scikit-learn`, `MDAnalysis`, `joblib`, and
-> `matplotlib`. Install them alongside PathGennie (e.g. `pip install scikit-learn
-> MDAnalysis joblib matplotlib`).
+> **Dependencies.** This utility needs `scikit-learn`, `matplotlib` and `joblib` on
+> top of PathGennie's core dependencies. They ship as an extra:
+>
+> ```bash
+> pip install 'pathgennie[analysis]'
+> ```
+>
+> Without them `pathgennie pcagen` raises an error naming this command.
 
 ## CLI
 

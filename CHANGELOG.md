@@ -6,6 +6,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`pathgennie pcagen` crashed with a bare `ModuleNotFoundError` on a clean install.**
+  `pathgennie/utils/ligcvgen.py` imported scikit-learn, matplotlib and joblib at module
+  level and **none of the three were declared** in `pyproject.toml` — not as core
+  dependencies, not as an extra — while `pcagen` is listed in `pathgennie --help` and
+  documented in `docs/pca-cv.md`. (The CLI already imported the module lazily, so only
+  that subcommand broke, not every command.) All three are now the `[analysis]` extra,
+  and the import site raises a message naming the missing package and
+  `pip install 'pathgennie[analysis]'`. The three sit in **one** guard deliberately:
+  `matplotlib` used to be imported *above* the sklearn check, so whichever package was
+  missing first decided the message and a guard below it could never fire. Covered by
+  `tests/test_pcagen_optional_deps.py`, which blocks each dependency in a subprocess and
+  also asserts the core package still imports without them; mutation-verified.
+  Closes the `[OPEN, Med]` item in `docs/HPC_REVIEW.md`.
+
 ### Changed
 - **Documentation drift swept (C9).** Three files claimed the suite held "192 tests"
   (it holds 232 after this release's additions, and the figure had already been wrong
