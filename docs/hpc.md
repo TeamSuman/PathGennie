@@ -2,7 +2,7 @@
 
 This guide covers running PathGennie at scale on Slurm and PBS clusters, on both
 CPU-only and GPU queues. For a ready-to-submit test battery, see
-[`tests/hpc/`](https://github.com/yourusername/PathGennie/tree/main/tests/hpc)
+[`tests/hpc/`](https://github.com/TeamSuman/PathGennie/tree/main/tests/hpc)
 (`README.md` + `DEBUGGING.md` there). For the architectural analysis, known
 limitations, and roadmap, see [HPC Review & Roadmap](HPC_REVIEW.md).
 

@@ -1,6 +1,6 @@
 # Roadmap: implemented vs planned
 
-A snapshot of what the v0.2.0 codebase delivers and what remains, against the
+A snapshot of what the current codebase delivers and what remains, against the
 development plan.
 
 ## Implemented (verified in CI on toy/synthetic systems)
@@ -20,7 +20,8 @@ development plan.
 | Path sampling (TPS/TIS) bridge | `sampling/path_sampling.py` | seed prep / reactive-path extraction / interfaces (OPS run needs the `pathsampling` extra) |
 | Downstream wiring | `sampling/runner.py`, backends | toy `run_downstream` test |
 
-Run `pytest -q` to reproduce (192 tests; SPIB tests need the `ml` extra).
+Run `pytest -q` to reproduce. SPIB tests need the `ml` extra; the OpenMM and
+MDAnalysis tests need those packages (CI runs them in the `test-md` lane).
 
 ## Environment caveats (not runnable in a CPU-only sandbox)
 

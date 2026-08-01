@@ -14,8 +14,8 @@ softmax-selects one, extends it, updates the anchor, and repeats — generating
 rare-event pathways (ligand unbinding, (un)folding, conformational change)
 cheaply, with only a *selection* bias on natural dynamics (no bias potential).
 
-This manual documents the v0.2.0 architecture and the features added on top of
-the original three-backend runners. For a high-level project overview and the
+This manual documents the shared-core architecture and the features built on top
+of the original three-backend runners. For a high-level project overview and the
 example gallery, see the top-level [`README.md`](../README.md); for a
 chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 
@@ -69,7 +69,7 @@ pip install -e .[examples]  # + ParmEd for some example setups
 Run the test suite to confirm a working install:
 
 ```bash
-pytest -q                   # 192 tests; SPIB tests skip if torch is absent
+pytest -q                   # SPIB tests skip without torch; OpenMM/MDAnalysis tests skip without them
 ```
 
 ## The 60-second mental model

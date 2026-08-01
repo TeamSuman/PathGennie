@@ -6,6 +6,18 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Documentation drift swept (C9).** Three files claimed the suite held "192 tests"
+  (it holds 232 after this release's additions, and the figure had already been wrong
+  as 96/69/47/90 in four places before that). Rather than update a number that has now
+  drifted twice, the exact count is **removed** from prose — the sentences describe what
+  the suite covers and which optional dependencies gate which tests. `docs/roadmap.md`
+  described "the v0.2.0 codebase" and `docs/index.md` "the v0.2.0 architecture" while the
+  package is 1.3.0; both now refer to the current codebase. `docs/hpc.md` still linked
+  `github.com/yourusername/PathGennie`. The remaining `v0.2.0` mentions are deliberate
+  feature provenance ("added in v0.2.0", "keys not listed keep their pre-v0.2.0
+  behaviour") and are left alone.
+
 ### Fixed
 - **The HPC harness could not run the example every template names as its default.**
   `tests/hpc/run_example.py` staged a case with `shutil.copytree(example, work)` — the
