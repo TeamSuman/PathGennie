@@ -19,7 +19,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   missing first decided the message and a guard below it could never fire. Covered by
   `tests/test_pcagen_optional_deps.py`, which blocks each dependency in a subprocess and
   also asserts the core package still imports without them; mutation-verified.
-  Closes the `[OPEN, Med]` item in `docs/HPC_REVIEW.md`.
+  Closes the `[OPEN, Med]` item in `docs/HPC_REVIEW.md`. The guard names the missing
+  package only when it is known — `ImportError.name` is `None` when a package exists but
+  fails to import for another reason (a broken install, a missing shared library), and
+  "missing: None" would send the user after the wrong problem.
 
 ### Changed
 - **Documentation drift swept (C9).** Three files claimed the suite held "192 tests"

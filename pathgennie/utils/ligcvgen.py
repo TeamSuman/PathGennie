@@ -15,11 +15,16 @@ except ImportError as _exc:  # pragma: no cover - exercised via the guard tests
     # "No module named ...". They are grouped in ONE guard deliberately: the
     # matplotlib import used to sit above the sklearn check, so whichever package
     # was missing first decided the (unhelpful) message.
+    # _exc.name is None when the package EXISTS but fails to import for another
+    # reason -- a broken install, a missing shared library. Printing "missing: None"
+    # would send the user looking for the wrong problem, so name it only when known.
+    _which = f" (missing: {_exc.name})" if getattr(_exc, "name", None) else ""
     raise ImportError(
         "The PCA distance-CV tools (pathgennie pcagen / LigPCGen) need "
         "scikit-learn, matplotlib and joblib, which are not core PathGennie "
-        f"dependencies (missing: {_exc.name}).\n"
-        "Install them with:  pip install 'pathgennie[analysis]'"
+        f"dependencies{_which}.\n"
+        "Install them with:  pip install 'pathgennie[analysis]'\n"
+        f"Underlying import error: {_exc}"
     ) from _exc
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import distance_array

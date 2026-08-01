@@ -19,6 +19,7 @@ message, and a guard placed under it could never fire.
 from __future__ import annotations
 
 import importlib.abc
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -68,10 +69,31 @@ def test_message_names_the_extra_for_every_optional_dependency(missing):
     )
 
 
+def _installed(mod: str) -> bool:
+    return importlib.util.find_spec(mod) is not None
+
+
 @pytest.mark.parametrize("missing", OPTIONAL)
 def test_the_missing_package_is_identified_by_name(missing):
+    """The message must name a genuinely missing package.
+
+    Which one it names is only well defined when exactly ONE is absent: the guard
+    reports ``_exc.name``, i.e. the FIRST import in the block that failed. In a bare
+    environment (PathGennie's core CI lane installs none of the three) blocking
+    ``sklearn`` still trips ``matplotlib`` first, so asserting the blocked name
+    unconditionally is an assumption about the environment, not about the code --
+    and it is exactly what broke this lane once.
+    """
     out = _import_without(missing)
-    assert missing in out, f"the message does not say which package was missing: {out!r}"
+    assert out.startswith("GUARD:")
+    others = [m for m in OPTIONAL if m != missing]
+    if all(_installed(m) for m in others):
+        assert missing in out, f"the message does not name the missing package: {out!r}"
+    else:
+        absent = [m for m in OPTIONAL if not _installed(m) or m == missing]
+        assert any(m in out for m in absent), (
+            f"the message names no genuinely missing package (absent: {absent}): {out!r}"
+        )
 
 
 def test_the_analysis_extra_declares_all_three():
