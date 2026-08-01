@@ -7,6 +7,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **The HPC job templates reported success when the MD run had failed.** All four
+  of `tests/hpc/{slurm_cpu.sbatch,slurm_gpu.sbatch,pbs_cpu.pbs,pbs_gpu.pbs}` ran the
+  MD step as `python tests/hpc/run_example.py ... || echo "smoke run FAILED (...)"`.
+  The `|| echo` *handles* the non-zero status, so `set -e` never fires, the script
+  falls through to its closing `echo "### Done."` and the job exits **0**. A user
+  submits the template to validate PathGennie on a new cluster, sees "Done", and
+  concludes it works — when the one thing the script exists to prove did not happen.
+  The missing-binary path had the same shape: no `gmx`/`pmemd.cuda` on `PATH` skipped
+  the MD block entirely and still exited 0. All four now accumulate a `PG_STATUS`,
+  report `### FAILED`, and `exit "$PG_STATUS"`; a missing MD binary is a failure
+  unless `PG_ALLOW_NO_MD=1` is set explicitly. The self-check no longer aborts the
+  script either, so one queued job returns the complete picture instead of only its
+  first failure. Covered by `tests/test_hpc_templates.py`, which executes the real
+  scripts with a stubbed `python` and asserts on exit codes; mutation-verified
+  (8 of its 16 tests fail against the shipped templates).
 - **AMBER restarts for periodic systems carried no box.** `write_rst7_coords`
   wrote coordinates only, so sander rejected the file outright —
   `peek_ewald_inpcrd: Box info not found in inpcrd`. `create_handle` builds

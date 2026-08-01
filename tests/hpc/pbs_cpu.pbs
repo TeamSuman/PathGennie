@@ -35,19 +35,37 @@ JOBID="${PBS_JOBID:-local}"
 RESULTS="tests/hpc/results/${JOBID%%.*}"
 mkdir -p "$RESULTS"
 
+# Exit status accumulator. Without this, "cmd || echo ..." below swallows
+# the failure and the job reports success having proved nothing.
+PG_STATUS=0
+
 echo "### PathGennie PBS CPU test — job $JOBID on $(hostname)"
 echo "### backend=$PG_BACKEND exe=$PG_EXE workers=$WORKERS threads/worker=$THREADS_PER_WORKER"
 export OMP_NUM_THREADS="$THREADS_PER_WORKER"
 
-python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json"
+python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json" \
+  || { echo "self-check FAILED (see $RESULTS/selfcheck.json)"; PG_STATUS=1; }
 
 if [ -n "$PG_EXE" ]; then
   python tests/hpc/run_example.py \
     --backend "$PG_BACKEND" --example "$PG_EXAMPLE" --executable "$PG_EXE" \
     --workers-per-device "$WORKERS" --cpu-threads-per-worker "$THREADS_PER_WORKER" \
-    --max-cycle 5 --out "$RESULTS/smoke_cpu.json" || echo "smoke run FAILED (see $RESULTS/smoke_cpu.json)"
+    --max-cycle 5 --out "$RESULTS/smoke_cpu.json" || { echo "MD smoke run FAILED (see $RESULTS/smoke_cpu.json)"; PG_STATUS=1; }
 else
-  echo "PG_EXE not set / MD binary not found — skipping MD smoke." | tee "$RESULTS/smoke_cpu.skipped"
+  echo "PG_EXE not set / MD binary not found -- the MD smoke run did NOT happen." \
+    | tee "$RESULTS/smoke_cpu.skipped"
+  if [ "${PG_ALLOW_NO_MD:-0}" = "1" ]; then
+    echo "PG_ALLOW_NO_MD=1 -- accepting this as a skip."
+  else
+    echo "This script exists to exercise real MD on the cluster; a missing"
+    echo "binary is a FAILURE. Set PG_ALLOW_NO_MD=1 to accept it as a skip."
+    PG_STATUS=1
+  fi
 fi
 
-echo "### Done. Results in $RESULTS/"
+if [ "$PG_STATUS" -ne 0 ]; then
+  echo "### FAILED -- see $RESULTS/ and tests/hpc/DEBUGGING.md"
+else
+  echo "### Done, all checks passed. Results in $RESULTS/"
+fi
+exit "$PG_STATUS"

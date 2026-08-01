@@ -45,12 +45,17 @@ cd "$PG_REPO"
 RESULTS="tests/hpc/results/${SLURM_JOB_ID:-local}"
 mkdir -p "$RESULTS"
 
+# Exit status accumulator. Without this, "cmd || echo ..." below swallows
+# the failure and the job reports success having proved nothing.
+PG_STATUS=0
+
 echo "### PathGennie SLURM GPU test — job ${SLURM_JOB_ID:-local} on $(hostname)"
 echo "### CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}  backend=$PG_BACKEND exe=$PG_EXE devices=$DEVICES"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv || true
 
 # 1) Diagnostics + functional checks (records how the scheduler mask is interpreted).
-python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json"
+python tests/hpc/hpc_selfcheck.py --example "$PG_EXAMPLE" --out "$RESULTS/selfcheck.json" \
+  || { echo "self-check FAILED (see $RESULTS/selfcheck.json)"; PG_STATUS=1; }
 
 # 2) Multi-GPU spread check: run a short swarm across the allocated GPUs and
 #    confirm via nvidia-smi that >1 physical GPU actually did work.
@@ -58,9 +63,22 @@ if [ -n "$PG_EXE" ]; then
   python tests/hpc/run_example.py \
     --backend "$PG_BACKEND" --example "$PG_EXAMPLE" --executable "$PG_EXE" \
     --devices "$DEVICES" --workers-per-device "$WORKERS" --max-cycle 10 \
-    --monitor-gpu --out "$RESULTS/gpu_spread.json" || echo "GPU run FAILED (see $RESULTS/gpu_spread.json)"
+    --monitor-gpu --out "$RESULTS/gpu_spread.json" || { echo "GPU run FAILED (see $RESULTS/gpu_spread.json)"; PG_STATUS=1; }
 else
-  echo "PG_EXE not set / GPU MD binary not found — skipping the GPU run." | tee "$RESULTS/gpu_spread.skipped"
+  echo "PG_EXE not set / MD binary not found -- the GPU run did NOT happen." \
+    | tee "$RESULTS/gpu_spread.skipped"
+  if [ "${PG_ALLOW_NO_MD:-0}" = "1" ]; then
+    echo "PG_ALLOW_NO_MD=1 -- accepting this as a skip."
+  else
+    echo "This script exists to exercise real MD on the cluster; a missing"
+    echo "binary is a FAILURE. Set PG_ALLOW_NO_MD=1 to accept it as a skip."
+    PG_STATUS=1
+  fi
 fi
 
-echo "### Done. Results in $RESULTS/"
+if [ "$PG_STATUS" -ne 0 ]; then
+  echo "### FAILED -- see $RESULTS/ and tests/hpc/DEBUGGING.md"
+else
+  echo "### Done, all checks passed. Results in $RESULTS/"
+fi
+exit "$PG_STATUS"
