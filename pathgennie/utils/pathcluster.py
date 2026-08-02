@@ -1,8 +1,22 @@
 import glob
+
 import numpy as np
-from sklearn.cluster import AgglomerativeClustering
-from dtaidistance import dtw_ndim
-import MDAnalysis as mda
+
+try:
+    import MDAnalysis as mda
+    from dtaidistance import dtw_ndim
+    from sklearn.cluster import AgglomerativeClustering
+except ImportError as _exc:  # pragma: no cover - exercised via the guard test
+    # DTW path clustering needs dtaidistance and scikit-learn, which are not core
+    # PathGennie dependencies. dtaidistance in particular was never declared
+    # anywhere, so this module could not run at all as shipped.
+    _which = f" (missing: {_exc.name})" if getattr(_exc, "name", None) else ""
+    raise ImportError(
+        "Path clustering (pathgennie.utils.pathcluster) needs dtaidistance, "
+        f"scikit-learn and MDAnalysis{_which}.\n"
+        "Install them with:  pip install 'pathgennie[analysis]'\n"
+        f"Underlying import error: {_exc}"
+    ) from _exc
 
 trajectories = []
 conf = "conf.gro"

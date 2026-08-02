@@ -116,6 +116,8 @@ Install the package from this checkout:
 
 ```bash
 pip install .
+pip install ".[openmm]"   # OpenMM backend (no longer a core dependency)
+pip install ".[analysis]" # pcagen + path clustering
 ```
 
 For development, install it in editable mode:

@@ -51,6 +51,23 @@ import threading
 from typing import Dict, List, Optional
 
 import numpy as np
+# --- optional-backend guard -------------------------------------------------
+# OpenMM is an optional extra as of this release: it is a large conda-forge
+# package and AMBER/GROMACS-only users were forced to install it. This check runs
+# BEFORE the real openmm imports below so the failure names the install command
+# instead of surfacing a bare "No module named 'openmm'". The CLI dispatches this
+# module lazily, so only `pathgennie openmm` is affected.
+try:
+    import openmm as _openmm_check  # noqa: F401
+except ImportError as _exc:  # pragma: no cover - exercised via the guard test
+    raise ImportError(
+        "The OpenMM backend requires the 'openmm' package, which is no longer a "
+        "core PathGennie dependency.\n"
+        "Install it with:  pip install 'pathgennie[openmm]'\n"
+        "             or:  conda install -c conda-forge openmm\n"
+        f"Underlying import error: {_exc}"
+    ) from _exc
+# ---------------------------------------------------------------------------
 from openmm import Context, State, XmlSerializer, unit
 from openmm.app import Simulation
 

@@ -35,7 +35,6 @@ dependencies = [
   "PyYAML",
   "tqdm",
   "MDAnalysis",
-  "OpenMM",
   "h5py",
   "pydantic>=2.0",
 ]
@@ -54,10 +53,14 @@ dev = [
 ml = [
   "torch",
 ]
+openmm = [
+  "OpenMM",
+]
 analysis = [
   "scikit-learn",
   "matplotlib",
   "joblib",
+  "dtaidistance",
 ]
 pathsampling = [
   "openpathsampling",

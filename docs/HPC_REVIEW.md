@@ -160,9 +160,12 @@ direction. Grouped by subsystem.
   `git filter-repo`/LFS for history), and parameterize the paths.
 
 ### Packaging / config surface
-- **[OPEN, Med] OpenMM is a hard core dependency** — `pip install pathgennie`
-  forces a heavy conda-forge package on AMBER/GROMACS-only users. *Fix:* move to
-  an `[openmm]` extra and lazy-import in the backend.
+- **[FIXED, Med] OpenMM is a hard core dependency** — `pip install pathgennie`
+  forced a heavy conda-forge package on AMBER/GROMACS-only users. Now the
+  `[openmm]` extra. The CLI already dispatched the backend lazily, so only
+  `pathgennie openmm` is affected, and it raises a message naming
+  `pip install 'pathgennie[openmm]'` rather than a bare `No module named 'openmm'`.
+  **Breaking for existing installs that relied on the implicit dependency.**
 - **[FIXED, Med] `pcagen` needs scikit-learn, undeclared** → `ModuleNotFoundError`
   on a clean install. Now declared as the `[analysis]` extra, and the import site
   raises a message naming `pip install 'pathgennie[analysis]'` instead of a bare

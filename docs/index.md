@@ -60,9 +60,11 @@ chronological list of changes see [`CHANGELOG.md`](../CHANGELOG.md).
 ## Installation
 
 ```bash
-pip install -e .            # core (OpenMM backend deps included)
+pip install -e .            # core: AMBER + GROMACS backends
+pip install -e .[openmm]    # + OpenMM, required for the OpenMM backend
 pip install -e .[dev]       # + pytest
 pip install -e .[ml]        # + PyTorch, required for the SPIB data-driven CV
+pip install -e .[analysis]  # + scikit-learn/matplotlib/joblib/dtaidistance for pcagen and path clustering
 pip install -e .[examples]  # + ParmEd for some example setups
 ```
 

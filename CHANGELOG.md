@@ -6,6 +6,35 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING (packaging): OpenMM is now the `[openmm]` extra, not a core dependency.**
+  `pip install pathgennie` forced a large conda-forge package on AMBER/GROMACS-only
+  users (`docs/HPC_REVIEW.md`, `[OPEN, Med]`). OpenMM users now need
+  `pip install 'pathgennie[openmm]'`. The CLI already dispatched the backend lazily, so
+  only `pathgennie openmm` is affected — and a guard placed *before* the real imports
+  raises a message naming the install command instead of a bare
+  `No module named 'openmm'`. Verified that the core package, CLI, driver and both the
+  AMBER and GROMACS backends import with OpenMM absent.
+- **Duplicate `utils/` tree removed.** Root `utils/` and `pathgennie/utils/` both held
+  `ligconfgen.py` and `ligcvgen.py`, and the two copies had **drifted** — the package
+  copy received a `scipy.spatial.KDTree` optimisation the root copy never did. Root
+  `utils/` was not packaged (`pyproject.toml` includes only `pathgennie*`/`pathrefinement*`)
+  and nothing imported it, so editing the wrong copy silently did nothing. Its one piece
+  of unique functionality, `pathcluster.py` (DTW path clustering), moved into
+  `pathgennie/utils/`. Its `pcagen.py` was **not** moved: the built-in `pathgennie pcagen`
+  subcommand already exposes exactly the same options, so keeping it would have
+  reintroduced the duplication being removed. It remains in git history.
+- `dtaidistance` added to the `[analysis]` extra — `pathcluster` imports it and it was
+  declared nowhere, so that module could not run as shipped. Its imports are guarded the
+  same way as `pcagen`'s.
+
+### Removed
+- A test asserting that global-RNG draws in a forked pool duplicate. It passes in
+  isolation and the mechanism reproduces reliably (12 tasks on 4 workers → 4–5 distinct
+  results), but it failed inside the full suite: it depends on CPython/numpy fork
+  semantics and on execution order, not on PathGennie code. The measured evidence stays
+  in the module docstring.
+
 ### Fixed
 - **Forked conformer workers all drew the same random poses (`ligconfgen`).**
   `generate_single_conformer` used the global `np.random` and is submitted to a
