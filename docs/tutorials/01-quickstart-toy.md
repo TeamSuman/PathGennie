@@ -1,5 +1,11 @@
 # Tutorial 01 — Quickstart on the toy engine
 
+> **Runnable version:** this tutorial's case ships as
+> [`examples/toy_langevin/`](https://github.com/TeamSuman/PathGennie/tree/main/examples/toy_langevin).
+> `cd examples/toy_langevin && python run_toy.py` — measured 6.9 s, converges at cycle 4,
+> and needs no MD engine.
+
+
 This runs the *entire* PathGennie driver — swarm → selection → runner →
 convergence — with no MD binary or GPU, using the built-in Wolfe–Quapp toy
 engine. It's the fastest way to see the method work and the foundation every

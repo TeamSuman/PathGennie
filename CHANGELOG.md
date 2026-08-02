@@ -6,6 +6,24 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-02
+
+### Added
+- **Examples are now documented.** There was no `examples/README.md` at all, 9 of 11
+  examples had no README, and `toy_langevin` — the only case that needs no MD engine —
+  was referenced in **zero** documentation files. Added an index with a comparison table,
+  a README per example system, and a pointer from the quickstart tutorial. The toy case is
+  now the stated entry point: measured **6.9 s, converging at cycle 4**, exercising the
+  same driver, checkpointing and output path as every real backend.
+
+### Removed
+- `gen_notebook.py` — it generated `benchmarks/RRT_Muller_Brown.ipynb`, which is kept. The
+  generator also imports `nbformat`, absent from the project environment, so it could not
+  have run as shipped.
+- `examples/OAMe-G2/gromacs/PLUMED.OUT` — a 17.5 KB PLUMED run log referenced by nothing.
+- Notebook execution counters and per-cell metadata cleared for reproducible diffs. All
+  embedded result images are **kept** — they are the demonstrated results, not noise.
+
 ### Changed
 - **BREAKING (packaging): OpenMM is now the `[openmm]` extra, not a core dependency.**
   `pip install pathgennie` forced a large conda-forge package on AMBER/GROMACS-only
