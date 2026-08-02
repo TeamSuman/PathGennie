@@ -77,6 +77,12 @@ version = { attr = "pathgennie.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["pathgennie*", "pathrefinement*"]
+# setuptools' pyproject backend defaults namespaces=true, so directories WITHOUT an
+# __init__.py are packaged as namespace packages. That silently shipped
+# pathrefinement/examples/ -- 101 KB, the second-largest item in the wheel, including
+# verify_mathematical_correctness.py -- into users' site-packages. Nothing in the
+# library or the test suite imports it; the example scripts only import each other.
+exclude = ["pathrefinement.examples*", "benchmarks*", "we*", "tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

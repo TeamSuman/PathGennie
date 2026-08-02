@@ -1,13 +1,25 @@
+# Development environment for PathGennie.
+#
+# This installs the CORE dependencies plus the optional backends and tools most
+# contributors want. It is NOT the minimal install -- for that, `pip install pathgennie`
+# pulls only the core set, and the optional pieces are extras:
+#   [openmm]   OpenMM backend        [ml]        SPIB / data-driven CVs (torch)
+#   [analysis] pcagen + clustering   [examples]  ParmEd for some example setups
 name: pathgennie
 channels:
   - conda-forge
   - nodefaults
 dependencies:
   - python=3.11
+  # --- core (unconditional imports; a missing one breaks `import pathgennie`) ---
   - numpy
   - pyyaml
   - tqdm
-  - openmm
   - mdanalysis
-  - parmed
+  - h5py
+  - pydantic>=2.0
+  # --- optional backends and tooling ---
+  - openmm            # [openmm] extra: not required for the AMBER/GROMACS backends
+  - parmed            # [examples] extra
+  - pytest            # [dev] extra
   - pip

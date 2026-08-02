@@ -16,6 +16,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now the stated entry point: measured **6.9 s, converging at cycle 4**, exercising the
   same driver, checkpointing and output path as every real backend.
 
+- **`environment.yml` was missing two core dependencies.** `h5py` and `pydantic` are
+  unconditional imports, so a conda environment built from that file could not
+  `import pathgennie`. Flagged in the first internal review and never closed until now.
+  The file also now states which entries are optional-backend extras rather than core.
+- **The wheel shipped 101 KB of example scripts.** setuptools' pyproject backend defaults
+  `namespaces = true`, so `pathrefinement/examples/` — which has no `__init__.py` — was
+  packaged as a namespace package and installed into users' `site-packages`, including
+  `verify_mathematical_correctness.py`. Nothing in the library or the suite imports it.
+  Now excluded; the wheel drops from 476 KB to 372 KB unpacked and installs
+  `pathgennie` and `pathrefinement` only, verified from a clean venv outside the source tree.
+
 ### Removed
 - `gen_notebook.py` — it generated `benchmarks/RRT_Muller_Brown.ipynb`, which is kept. The
   generator also imports `nbformat`, absent from the project environment, so it could not
@@ -656,6 +667,7 @@ Weighted Ensemble stage. Existing `input.yaml` cases continue to run unchanged.
 - Initial PathGennie release: direction-guided adaptive sampling with separate
   OpenMM, AMBER, and GROMACS runners driven by per-case `input.yaml` files.
 
+[2.0.0]: https://github.com/TeamSuman/PathGennie/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/TeamSuman/PathGennie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/TeamSuman/PathGennie/compare/v0.2.0...v1.2.0
 [0.2.0]: https://github.com/TeamSuman/PathGennie/releases/tag/v0.2.0
