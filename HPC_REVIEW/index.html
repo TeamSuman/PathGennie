@@ -1,0 +1,2176 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://teamsuman.github.io/PathGennie/HPC_REVIEW/">
+      
+      
+        <link rel="prev" href="../multi-gpu/">
+      
+      
+        <link rel="next" href="../data-driven-cv/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>HPC Review & Roadmap - PathGennie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#pathgennie-hpc-code-review-sota-positioning-roadmap" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="PathGennie" class="md-header__button md-logo" aria-label="PathGennie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            PathGennie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              HPC Review & Roadmap
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TeamSuman/PathGennie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorial/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../hpc/" class="md-tabs__link">
+          
+  
+  
+  HPC & Scaling
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../data-driven-cv/" class="md-tabs__link">
+          
+  
+  
+  Capabilities
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorials/01-quickstart-toy/" class="md-tabs__link">
+          
+  
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Project Roadmap
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="PathGennie" class="md-nav__button md-logo" aria-label="PathGennie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    PathGennie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TeamSuman/PathGennie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC & Scaling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    HPC & Scaling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hpc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-gpu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-GPU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Review & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Review & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Executive summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-was-integrated-branch-reconciliation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What was integrated (branch reconciliation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bugs-fixed-on-this-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Bugs fixed on this branch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-open-bugs-limitations-prioritized-not-yet-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Open bugs &amp; limitations (prioritized, not yet fixed)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Open bugs &amp; limitations (prioritized, not yet fixed)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-driver-parallelism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core driver / parallelism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enhanced-sampling-sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enhanced sampling (sampling/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cv-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CV / search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pathrefinement-and-we-packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pathrefinement/ and we/ packages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#packaging-config-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packaging / config surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ambergromacs-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AMBER/GROMACS backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-hpc-scaling-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. HPC scaling analysis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-comparison-with-westpa-slurmpbs-job-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Comparison with WESTPA (Slurm/PBS job control)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-sota-positioning-further-developments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. SOTA positioning &amp; further developments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-prioritized-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Prioritized roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Capabilities
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-driven-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data-Driven CVs (SPIB)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path CVs (s, z)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-refinement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Refinement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qmmm-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QM/MM Reactive Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pca-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PCA Distance-CV Space
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy Profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weighted-ensemble/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weighted Ensemble
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../opes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OPES
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-sampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Sampling (TPS/TIS)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../non-linear-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Linear Search (RRT)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Controller
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/01-quickstart-toy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (toy)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/02-multi-gpu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-GPU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/03-spib-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPIB CV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/04-weighted-ensemble/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weighted Ensemble
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/05-strategy-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy Profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/06-rrt-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RRT Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/07-roadmap-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/08-opes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OPES
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/09-path-sampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Sampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/10-path-refinement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Refinement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="pathgennie-hpc-code-review-sota-positioning-roadmap">PathGennie — HPC Code Review, SOTA Positioning &amp; Roadmap</h1>
+<p><em>A computational-chemistry code review focused on running scalable, large-scale
+atomistic MD on HPC clusters (CPU and GPU, Slurm and PBS), plus a comparison
+against state-of-the-art tools and a prioritized development roadmap.</em></p>
+<p>This document accompanies the branch-integration work that unified <code>devel</code>
+(which already contained <code>pathcv</code> and the GPU-optimization branch) and <code>v2</code> onto
+<code>main</code>, hardened the HPC-critical paths, and added a Slurm/PBS test suite
+(<code>tests/hpc/</code>). Fixes marked <strong>[FIXED]</strong> are implemented and covered by tests on
+this branch; <strong>[OPEN]</strong> items are documented for follow-up with a suggested
+approach.</p>
+<hr />
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>PathGennie's core idea — selection bias on swarms of <em>unbiased</em> ultrashort
+trajectories to discover rare-event paths, then hand seeds to quantitative
+enhanced sampling — is timely and competitive. The <code>devel</code> re-architecture
+(single backend-independent driver, device pool, SPIB CV, WE/OPES/TPS stages,
+RRT/roadmap search) is a strong foundation.</p>
+<p>However, before this review the promoted code had <strong>release-blocking defects</strong>:</p>
+<ul>
+<li><strong>Config validation dropped every real parameter</strong> — every AMBER/GROMACS/OpenMM
+  run crashed with <code>KeyError: 'tau1_steps'</code>, and <code>md</code>/<code>workdir</code>/<code>output</code> blocks
+  were silently discarded (wrong physics would have run). <strong>[FIXED]</strong></li>
+<li><strong>On-the-fly SPIB crashed on the first cycle</strong> (<code>project()</code> missing the <code>cycle</code>
+  argument). <strong>[FIXED]</strong></li>
+<li><strong>GPU device selection ignored the scheduler</strong>, overwriting
+  <code>CUDA_VISIBLE_DEVICES</code> with absolute indices and colliding with other jobs on
+  shared nodes. <strong>[FIXED]</strong></li>
+<li><strong>A leftover git merge-conflict block was committed into <code>README.md</code>.</strong> <strong>[FIXED]</strong></li>
+</ul>
+<p>The dominant <em>architectural</em> limitations for large-scale MD are: (1) no working
+multi-node path; (2) per-segment process re-launch overhead that dominates
+ultrashort segments on large systems; (3) no resume-from-checkpoint; and (4)
+several enhanced-sampling modules that are CI-verified on toys but not yet wired
+to real MD end-to-end. These are the roadmap's focus.</p>
+<hr />
+<h2 id="2-what-was-integrated-branch-reconciliation">2. What was integrated (branch reconciliation)</h2>
+<table>
+<thead>
+<tr>
+<th>Branch</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>devel</code></td>
+<td>merged → this branch</td>
+<td>Superset of features; brought to <code>main</code>.</td>
+</tr>
+<tr>
+<td><code>pathcv</code></td>
+<td>already ⊆ <code>devel</code></td>
+<td>PathCV / artificial-PCA-space mode; no separate import needed.</td>
+</tr>
+<tr>
+<td><code>gpu-optimization</code> branch</td>
+<td>already ⊆ <code>devel</code></td>
+<td>Shared driver, device pool, WE/OPES/search.</td>
+</tr>
+<tr>
+<td><code>v2</code></td>
+<td>already ⊆ <code>main</code></td>
+<td>Its later-deleted files (OAMe-G2 AMBER example) were intentionally relocated to OpenMM in <code>devel</code>; nothing orphaned.</td>
+</tr>
+</tbody>
+</table>
+<p>Because <code>pathcv</code> and the GPU branch were already merged into <code>devel</code>, and <code>v2</code>
+into <code>main</code>, a single <code>devel</code>→<code>main</code> merge unified <strong>all</strong> branches. <code>devel</code>'s
+own commit history (preserved by the merge) is already phased by feature; the
+hardening work here is layered on top as clean, single-purpose commits.</p>
+<hr />
+<h2 id="3-bugs-fixed-on-this-branch">3. Bugs fixed on this branch</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Severity</th>
+<th>Area</th>
+<th>Bug</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Critical</td>
+<td><code>utils/config.py</code></td>
+<td>Schema declared <code>tau1</code>/<code>tau2</code> (code reads <code>tau1_steps</code>); <code>extra="ignore"</code> dropped <code>tau1_steps</code>, <code>devices</code>, <code>downstream</code>, <code>profile</code>, and the <code>md</code>/<code>workdir</code>/<code>output</code> sections → <code>KeyError</code> and silently-ignored MD params.</td>
+<td>Real field names + <code>extra="allow"</code> on both models; bounds/enum validation; empty-file guard; <code>tests/test_config.py</code>.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Critical</td>
+<td><code>cv/spib.py</code></td>
+<td><code>SPIBProgress.project(self, coords)</code> lacked <code>cycle</code>; driver always calls <code>project(coords, cycle=…)</code> → <code>TypeError</code> on cycle 0. Hidden because the test skips without torch.</td>
+<td>Added <code>cycle</code> param; forwarded to bootstrap CV.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>High (HPC)</td>
+<td><code>core/parallel.py</code>, engines, <code>we/gpu_worker.py</code></td>
+<td>Engines overwrote <code>CUDA_VISIBLE_DEVICES</code> with absolute indices → targeted GPUs the job didn't own.</td>
+<td><code>resolve_cuda_visible_device()</code> maps logical indices onto the scheduler mask; wired into AMBER/GROMACS engines and the <code>we</code> GPU worker; <code>tests/test_hpc_parallel.py</code>.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>High (HPC)</td>
+<td><code>core/driver.py</code></td>
+<td>Per-trial seeds drawn inside worker threads; <code>np.random.Generator</code> is not thread-safe → non-reproducible seed→trial mapping under the device pool.</td>
+<td>Seeds pre-drawn on the main thread; threaded runs now match serial bit-for-bit.</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Med (HPC)</td>
+<td><code>core/driver.py</code>, <code>search/rrt.py</code></td>
+<td>Cloned-anchor handle never released → one scratch restart / cache entry leaked per trial per cycle (fills node-local scratch).</td>
+<td>Release the clone after its segment output exists.</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Med</td>
+<td><code>core/driver.py</code></td>
+<td>Handle release used <code>is</code> identity on ints (&gt;256) — fragile, breaks under serialization.</td>
+<td>Compare by value (<code>==</code>).</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Med (HPC)</td>
+<td><code>core/storage.py</code></td>
+<td>HDF5 writer-thread exceptions swallowed → every frame silently lost after the thread died.</td>
+<td>Capture and re-raise on <code>append</code>/<code>close</code>.</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Med</td>
+<td><code>pathrefinement/__init__.py</code></td>
+<td>Eager <code>torch</code>+<code>openmm</code> imports broke <code>import pathrefinement</code> on a base install.</td>
+<td>Lazy (PEP 562) loading with a clear install hint.</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Med</td>
+<td><code>pathrefinement/pathiter.py</code></td>
+<td><code>NameError</code> (<code>pc</code> undefined) in the iterative learner.</td>
+<td><code>self.pc</code>.</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Low</td>
+<td><code>README.md</code></td>
+<td>Committed merge-conflict markers; stale example table (OAMe-G2); reference to a deleted config (<code>input_c7eq.yaml</code>).</td>
+<td>Resolved/updated; config reference expanded with the HPC keys.</td>
+</tr>
+<tr>
+<td>11</td>
+<td>New (HPC)</td>
+<td><code>pathgennie</code> config + engines</td>
+<td>No control over CPU thread count → concurrent CPU segments each grabbed all cores.</td>
+<td><code>cpu_threads_per_worker</code> pins OMP/MKL threads and GROMACS <code>-ntomp</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>All fixes verified by <code>pytest</code> (192 passed, 2 skipped for absent torch/openmm) and
+by <code>tests/hpc/hpc_selfcheck.py</code>.</p>
+<hr />
+<h2 id="4-open-bugs-limitations-prioritized-not-yet-fixed">4. Open bugs &amp; limitations (prioritized, not yet fixed)</h2>
+<p>These need domain decisions or real-hardware validation; each has a suggested
+direction. Grouped by subsystem.</p>
+<h3 id="core-driver-parallelism">Core driver / parallelism</h3>
+<ul>
+<li><strong>[RESOLVED] Multi-node executors removed.</strong> <code>MPIExecutor</code>/<code>DaskExecutor</code> were
+  non-functional (nested closures capturing a live, unpicklable engine) and wired
+  to no backend, so they were removed along with the <code>[hpc]</code> extra. Multi-node
+  throughput is served by independent pathways/replicates as Slurm/PBS array jobs;
+  a work-queue manager for a single tightly-coupled run stays on the roadmap.</li>
+<li><strong>[OPEN, High] OpenMM has no multi-GPU path.</strong> <code>pg_omm</code> hardcodes
+  <code>SerialExecutor</code>; the promised process pool ("one Context per GPU") is not
+  implemented. <em>Fix:</em> a <code>ProcessDevicePool</code> that builds one <code>Simulation</code> per
+  worker process pinned to a <code>CudaDeviceIndex</code>.</li>
+<li><strong>[OPEN, Med] OpenMM platform properties are unset</strong> — no <code>CudaDeviceIndex</code>,
+  <code>Precision</code> (defaults to <code>single</code>, hurting energy conservation on large
+  systems), or <code>DeterministicForces</code>. <em>Fix:</em> thread a <code>platform_properties</code> dict
+  from <code>openmm:</code> config into both <code>Simulation(...)</code> sites.</li>
+<li><strong>[OPEN, Med] Static per-cycle barrier.</strong> The swarm is a hard barrier: the
+  slowest of <code>max_trial</code> segments gates the cycle, and <code>ThreadDevicePool</code>
+  round-robins statically. Heterogeneous segment costs waste GPU time. <em>Fix:</em>
+  a pull-based task queue (see §6, WESTPA).</li>
+</ul>
+<h3 id="enhanced-sampling-sampling">Enhanced sampling (<code>sampling/</code>)</h3>
+<ul>
+<li><strong>[OPEN, Med] OPES FES reweighting lacks <code>c(t)</code></strong> and reuses the final bias for
+  all frames → statistically inconsistent; no error bars. <em>Fix:</em> store
+  instantaneous bias, use the OPES <code>c(t)</code> estimator, or reweight the converged
+  tail only.</li>
+<li><strong>[OPEN, Med] OPES production (PLUMED) path is unwired</strong> — needs an
+  <code>engine.run_plumed(...)</code> no backend implements. <em>Fix:</em> implement PLUMED driving
+  in the OpenMM backend (OpenMM-PLUMED plugin) and/or GROMACS <code>-plumed</code>.</li>
+<li><strong>[OPEN, Med] TIS rate analysis is a silent stub</strong> (<code>TISAnalysis</code> is not the OPS
+  rate API; wrapped in a bare <code>except</code>). <em>Fix:</em> use <code>StandardTISAnalysis</code> with
+  flux/interface components; drop the silent catch.</li>
+<li><strong>[OPEN, Med] WE reports a free energy under recycling</strong>, which is a
+  non-equilibrium steady state, not the equilibrium FES. <em>Fix:</em> suppress/relabel
+  the FES when <code>recycle=True</code>; report flux/rate instead.</li>
+<li><strong>[OPEN, Low] WE split under a deterministic integrator</strong> produces perfectly
+  correlated copies (no variance reduction). <em>Fix:</em> warn/require stochastic
+  dynamics when splitting with continued velocities.</li>
+<li><strong>[OPEN, Med] In-process (OpenMM/toy) engines can't cross process boundaries</strong>
+  for WE under MPI/Dask (integer handles index a process-local cache). <em>Fix:</em>
+  return coordinates alongside handles, or restrict distributed executors to
+  file-handle backends.</li>
+</ul>
+<h3 id="cv-search">CV / search</h3>
+<ul>
+<li><strong>[OPEN, High] SPIB retraining blocks the MD loop</strong> on the main thread (CPU
+  only), with an unbounded frame buffer re-featurized every refresh. On a long
+  run the whole swarm stalls and memory grows without bound. <em>Fix:</em> background
+  training with atomic model swap; ring-buffer the frames; train on GPU.</li>
+<li><strong>[OPEN, Med] SPIB uses a fixed N(0,I) prior</strong> and reinitializes each refinement
+  round — it's a time-lagged deep-VIB, not full SPIB (whose learnable
+  state-dependent prior drives the emergent state count). <em>Fix:</em> implement the
+  mixture prior or document as "VIB-SPIB (simplified prior)"; warm-start.</li>
+<li><strong>[OPEN, Med] SPIB CV is non-stationary across refreshes</strong> — stored
+  <code>anchor_metric</code> is compared against a metric under a newly trained latent. <em>Fix:</em>
+  re-project the anchor metric after each refresh; warm-start the encoder.</li>
+<li><strong>[OPEN, Low] RRT nearest-neighbour is O(n)</strong> with a per-call <code>np.stack</code> → O(n²)
+  tree build; the requested KD-tree is absent. <em>Fix:</em> <code>scipy.spatial.cKDTree</code>
+  rebuilt periodically (CV dim is tiny).</li>
+</ul>
+<h3 id="pathrefinement-and-we-packages"><code>pathrefinement/</code> and <code>we/</code> packages</h3>
+<ul>
+<li><strong>[OPEN, High] <code>we/</code> is an orphaned island</strong> with its own <code>pyproject</code>/deps that
+  duplicates <code>pathgennie/sampling/weighted_ensemble.py</code>. <em>Fix:</em> consolidate on the
+  <code>pathgennie/sampling</code> implementation; port any unique <code>we/</code> features
+  (recycling/flux, ligand-RMSD merge) into it; excise <code>we/</code> from the release or
+  clearly mark it a separate research repo.</li>
+<li><strong>[OPEN, Med] <code>pathrefinement</code> real-MD path is non-functional/oversold</strong> —
+  <code>PathRefiner</code> refines only a 2D toy particle; <code>pathiter</code> collapses a protein
+  into one 3D principal curve. <em>Fix:</em> implement a genuine path-CV (s,z) feature
+  map for molecular systems; scope the docs to what works today.</li>
+<li><strong>[OPEN, Med] Duplicated/dead code</strong>: <code>we/main.py</code> vs <code>main2.py</code> vs
+  <code>main_clean.py</code>; <code>LigandResamplerBack</code> returns one value but the caller unpacks
+  two. <em>Fix:</em> delete the dead variants.</li>
+<li><strong>[OPEN, High] ~90 MB of committed binary artifacts</strong> (27 MB + 25 MB PDBs,
+  multi-MB result PNGs/DCDs, large notebooks with outputs) and <strong>hardcoded
+  <code>/home/dm/...</code> paths</strong> in <code>pathrefinement</code>/<code>we</code> examples. <em>Fix:</em> <code>git rm</code> the
+  generated <code>results/</code>, add <code>.gitignore</code> rules, strip notebook outputs (consider
+  <code>git filter-repo</code>/LFS for history), and parameterize the paths.</li>
+</ul>
+<h3 id="packaging-config-surface">Packaging / config surface</h3>
+<ul>
+<li><strong>[FIXED, Med] OpenMM is a hard core dependency</strong> — <code>pip install pathgennie</code>
+  forced a heavy conda-forge package on AMBER/GROMACS-only users. Now the
+  <code>[openmm]</code> extra. The CLI already dispatched the backend lazily, so only
+  <code>pathgennie openmm</code> is affected, and it raises a message naming
+  <code>pip install 'pathgennie[openmm]'</code> rather than a bare <code>No module named 'openmm'</code>.
+  <strong>Breaking for existing installs that relied on the implicit dependency.</strong></li>
+<li><strong>[FIXED, Med] <code>pcagen</code> needs scikit-learn, undeclared</strong> → <code>ModuleNotFoundError</code>
+  on a clean install. Now declared as the <code>[analysis]</code> extra, and the import site
+  raises a message naming <code>pip install 'pathgennie[analysis]'</code> instead of a bare
+  <code>No module named 'sklearn'</code>. The CLI already imported it lazily, so only the
+  <code>pcagen</code> subcommand was affected, not every command.</li>
+<li><strong>[OPEN, Low] Strategy <code>selection</code>/<code>cv</code> fields are advertised but unconsumed</strong>
+  (<code>SAMPLING</code> says <code>selection="beam"</code>, but the driver only ever does
+  <code>softmax</code>). The agent controller is likewise unused at runtime. <em>Fix:</em> wire the
+  policies or document them as future/no-op.</li>
+</ul>
+<h3 id="ambergromacs-backend">AMBER/GROMACS backend</h3>
+<ul>
+<li><strong>[OPEN, Med] ASCII restart (<code>ntxo=1</code>) parsing</strong> is slow and lossy for very
+  large systems; NetCDF restarts would be faster/precise. <em>Fix:</em> support and
+  prefer NetCDF restarts (<code>ntxo=2</code>) via MDAnalysis/parmed.</li>
+<li><strong>[OPEN, Low] <code>os.chdir(case_dir)</code></strong> in the runners mutates global CWD (not
+  reentrant). <em>Fix:</em> pass absolute paths; avoid <code>chdir</code>.</li>
+<li><strong>[OPEN, Low] CV/convergence use unwrapped coordinates</strong> — COM–COM distances
+  across PBC need minimum-image handling in the user's projection.</li>
+</ul>
+<hr />
+<h2 id="5-hpc-scaling-analysis">5. HPC scaling analysis</h2>
+<p><strong>Where PathGennie scales well today.</strong> Single-node multi-GPU on AMBER/GROMACS is
+sound: <code>subprocess.run</code> releases the GIL so <code>ThreadDevicePool</code> genuinely runs
+segments concurrently, each pinned to a (now scheduler-correct) GPU with an
+isolated scratch subdirectory. For discovery runs (many short segments, small/
+medium systems), this saturates a GPU node well.</p>
+<p><strong>The launch-overhead wall.</strong> The subprocess backends re-launch <code>pmemd.cuda</code> /
+<code>gmx mdrun</code> for <strong>every</strong> segment. Each launch pays GPU-context creation +
+topology parse + neighbor-list build — seconds for a large (10⁵–10⁶ atom) system.
+With ultrashort <code>tau1</code> (the paper's regime is tens of fs, i.e. a handful of
+steps), <em>startup dominates useful work</em>: a 2-step segment on a 500k-atom system
+may spend &gt;99% of wall time in launch. This is the single biggest scaling
+limitation for large systems.</p>
+<p><em>Implications / mitigations:</em>
+- Prefer the <strong>in-process OpenMM engine</strong> for large systems (persistent Context,
+  no per-segment launch) — but it needs the multi-GPU process pool (§4).
+- Increase <code>tau1</code>/<code>tau2</code> so useful work amortizes launch (the <code>sampling</code> profile
+  already does this).
+- Consider a <strong>persistent-worker</strong> model for AMBER/GROMACS (a resident process
+  fed successive segments, e.g. GROMACS via <code>gmxapi</code>, AMBER via its Python API),
+  which is the real fix.</p>
+<p><strong>Filesystem.</strong> Thousands of tiny segment files on shared Lustre/NFS is a
+metadata storm. Node-local <code>$TMPDIR</code> is essential (documented in <code>docs/hpc.md</code>;
+enforced by the <code>tests/hpc</code> scripts). A future default should place scratch on
+node-local disk automatically.</p>
+<p><strong>Memory.</strong> The driver holds the full trajectory in RAM and, with
+<code>collect_seeds</code>, one State clone per saved frame; <code>checkpoint_path</code> streams to
+HDF5 but is not the default and the trajectory list is still retained. For
+large systems over many cycles this grows linearly. <em>Fix:</em> stream by default and
+drop in-RAM frames when a checkpoint path is set.</p>
+<p><strong>Load balancing.</strong> The per-cycle barrier plus static round-robin wastes GPU time
+under heterogeneous segment costs. A pull-based queue (next §) is the fix.</p>
+<hr />
+<h2 id="6-comparison-with-westpa-slurmpbs-job-control">6. Comparison with WESTPA (Slurm/PBS job control)</h2>
+<p><a href="https://github.com/westpa/westpa">WESTPA</a> is the reference weighted-ensemble
+framework and a good yardstick for HPC job control. Key differences:</p>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>WESTPA</th>
+<th>PathGennie (today)</th>
+<th>Takeaway</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Work managers</td>
+<td><code>serial</code>, <code>threads</code>, <code>processes</code> (single-node shared memory), <strong><code>zmq</code></strong> (ZeroMQ master + clients, multi-node), <code>mpi</code> — chosen at runtime</td>
+<td><code>SerialExecutor</code>, <code>ThreadDevicePool</code> (single-node); MPI/Dask stubs broken</td>
+<td><strong>Borrow the ZMQ work-queue model</strong> for real multi-node scale-out.</td>
+</tr>
+<tr>
+<td>Multi-node</td>
+<td>Slurm script starts a master; <code>srun</code> launches a client per node that pulls segments from the master's queue → dynamic load balancing across nodes</td>
+<td>none working</td>
+<td>Highest-value gap.</td>
+</tr>
+<tr>
+<td>Load balancing</td>
+<td>Pull-based task queue; heterogeneous segment costs balance naturally</td>
+<td>static round-robin + per-cycle barrier</td>
+<td>Replace round-robin with a queue.</td>
+</tr>
+<tr>
+<td>Restart</td>
+<td>Central <code>west.h5</code>, checkpointed <strong>every iteration</strong>; <code>w_run</code> resumes seamlessly → multi-week campaigns survive walltime limits/requeue</td>
+<td>streaming HDF5 only; <strong>no resume</strong></td>
+<td><strong>Add resume-from-checkpoint</strong> (anchor + RNG state). Critical for HPC walltime limits.</td>
+</tr>
+<tr>
+<td>Per-segment RNG</td>
+<td><code>ig=RAND</code> entropy-seeded, replaced per segment by <code>runseg.sh</code> (best practice to avoid restart bias)</td>
+<td><code>ig=&lt;seed&gt;</code> per segment, now deterministic from a master seed</td>
+<td><strong>On par / arguably better</strong> — PathGennie is reproducible; WESTPA's entropy seed is not (by design).</td>
+</tr>
+<tr>
+<td>Node-local scratch</td>
+<td><code>runseg.sh</code> runs each segment in <code>/tmp</code>, copies back before job end</td>
+<td>scratch under <code>workdir</code> (often shared FS)</td>
+<td><strong>Adopt node-local <code>$TMPDIR</code> by default</strong> with copy-back.</td>
+</tr>
+<tr>
+<td>Single-node multi-GPU</td>
+<td><code>processes</code> manager (some users prefer it over ZMQ to avoid TCP)</td>
+<td><code>ThreadDevicePool</code> (lighter — subprocess MD releases the GIL)</td>
+<td><strong>On par</strong>; PathGennie's is arguably simpler for this case.</td>
+</tr>
+<tr>
+<td>Config / UX</td>
+<td><code>west.cfg</code> + <code>env.sh</code>/<code>node.sh</code>/<code>runseg.sh</code> templates per cluster</td>
+<td>single <code>input.yaml</code> + Python CV/convergence</td>
+<td><strong>PathGennie is friendlier</strong>; keep that edge.</td>
+</tr>
+<tr>
+<td>Env inheritance across nodes</td>
+<td>Explicit <code>env.sh</code>/<code>node.sh</code> per node</td>
+<td>inherits <code>os.environ</code> (single node)</td>
+<td>Needed once multi-node lands.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ideas to borrow, concretely:</strong>
+1. A <strong><code>work_manager</code> config key</strong> (<code>serial|threads|processes|zmq</code>) selecting the
+   executor uniformly across backends — decouple orchestration from allocation
+   (WESTPA's biggest structural win).
+2. A <strong>ZeroMQ/task-queue executor</strong>: a master enqueues segments; clients launched
+   by <code>srun</code>/<code>mpirun</code> on each node pull work and own a process-local engine. This
+   simultaneously fixes multi-node <em>and</em> dynamic load balancing, and sidesteps the
+   pickling problem (send positions/params, not closures).
+3. <strong>Iteration-level checkpoint + resume</strong> to a central HDF5, so a job that hits
+   walltime requeues and continues — table-stakes for production campaigns.
+4. <strong>Node-local scratch by default</strong> with copy-back, as WESTPA's <code>runseg.sh</code> does.</p>
+<p>Where PathGennie already leads WESTPA: reproducible seeding, a much lower-friction
+config/UX, and a broader algorithmic ambition (direction-guided discovery feeding
+WE/OPES/TPS rather than WE alone).</p>
+<hr />
+<h2 id="7-sota-positioning-further-developments">7. SOTA positioning &amp; further developments</h2>
+<p>PathGennie sits at the intersection of <strong>adaptive sampling</strong> (High-Throughput MD /
+Markov State Models, FAST, AdaptiveBandit), <strong>enhanced sampling</strong> (WESTPA,
+PLUMED/OPES, SSAGES, OpenPathSampling), and <strong>ML collective variables</strong>
+(SPIB, VAMPnets, TICA, GNN-CVs). Its differentiator is <em>direction-guided
+selection on unbiased ultrashort swarms</em> to seed the quantitative methods.</p>
+<p>To be globally competitive:</p>
+<p><strong>Correctness &amp; trust.</strong>
+- Ship <strong>quantitative validators</strong> with error bars: FES vs analytic marginals on
+  toys (Müller-Brown, Wolfe-Quapp) with block-averaged error, and rate/MFPT
+  cross-checks against WE/TPS. Turn <code>benchmarks/we_fes.py</code>'s correlation print
+  into a pass/fail with tolerances.
+- A <strong>CI lane with torch + OpenMM</strong> so the SPIB/OpenMM paths (currently skipped)
+  are actually exercised.</p>
+<p><strong>Interoperability (adopt community standards, don't reinvent).</strong>
+- <strong>PLUMED</strong> as a first-class CV/bias engine (OpenMM-PLUMED, GROMACS <code>-plumed</code>) —
+  gives OPES/metadynamics/funnel-metad for free and lets users reuse existing
+  <code>plumed.dat</code>. The repo already has <code>plumed.dat</code> examples; wire them.
+- <strong>MDAnalysis/MDTraj</strong> selection language for CVs instead of hand-indexing.
+- <strong>deeptime</strong>/<strong>PyEMMA</strong> for MSM/TICA/VAMP so learned CVs and kinetics are
+  validated against a mature library.
+- <strong>OpenMM <code>gmxapi</code>/AMBER Python</strong> persistent engines to kill per-segment launch
+  overhead.</p>
+<p><strong>Method frontier.</strong>
+- <strong>Modern ML-CVs</strong>: VAMPnets, time-lagged autoencoders, and GNN-based CVs
+  (<code>mlcolvar</code>) alongside SPIB; a proper learnable-prior SPIB.
+- <strong>AND</strong> — align the discovery→refinement→sampling pipeline so a discovered path
+  seeds string/FEP-style refinement and then WE/TIS for rates, end-to-end.
+- <strong>haMSM / history-augmented MSM</strong> post-analysis (as in WESTPA 2.0) for
+  unbiased kinetics from the swarm data you already generate.</p>
+<p><strong>Scale &amp; robustness (the roadmap below).</strong></p>
+<hr />
+<h2 id="8-prioritized-roadmap">8. Prioritized roadmap</h2>
+<p><strong>P0 — make the promoted release trustworthy (done).</strong>
+- [x] Fix config validation, SPIB <code>cycle</code>, GPU masking, reproducibility, leaks,
+      storage errors, lazy imports, README conflict markers.
+- [x] Add a CI lane (base + torch, so SPIB/CV tests run instead of skipping);
+      turn the toy WE FES benchmark into a pass/fail validator (<code>r &gt; 0.85</code>).
+- [x] Untrack the ~90 MB of committed run outputs and gitignore them;
+      parameterize the hardcoded home paths. <em>(Remaining: a <code>git filter-repo</code>/LFS
+      history rewrite to reclaim the blobs already in history.)</em></p>
+<p><strong>P1 — HPC scale-out (the biggest competitive gap).</strong>
+- [x] Node-local scratch via <code>scratch_root</code> / <code>$PATHGENNIE_SCRATCH</code> (outputs stay
+      on the shared FS). <em>(Next: make node-local the documented default in job
+      templates — the <code>tests/hpc</code> scripts already point <code>$TMPDIR</code> there.)</em>
+- [ ] <code>work_manager</code> config abstraction (serial/threads/processes/zmq).
+- [ ] A ZeroMQ/task-queue executor for multi-node with dynamic load balancing
+      (fixes multi-node + balancing + the pickling problem together).
+- [ ] Iteration-level checkpoint <strong>and resume</strong> to a central HDF5.
+- [ ] OpenMM <code>ProcessDevicePool</code> (multi-GPU in-process) + platform-properties
+      (precision/deterministic forces/device index).</p>
+<p><strong>P2 — eliminate the launch-overhead wall.</strong>
+- [ ] Persistent-worker AMBER/GROMACS engines (<code>gmxapi</code> / AMBER Python API) so
+      large-system ultrashort segments amortize startup.
+- [ ] Stream trajectories to disk by default; stop holding full trajectories in RAM.</p>
+<p><strong>P3 — enhanced-sampling correctness &amp; interoperability.</strong>
+- [ ] OPES <code>c(t)</code> reweighting with error bars; wire the PLUMED production path.
+- [ ] Real OPS <code>StandardTISAnalysis</code> rates; remove silent excepts.
+- [ ] Consolidate <code>we/</code> into <code>pathgennie/sampling</code>; delete dead variants.
+- [ ] Background SPIB training + ring buffer + GPU; learnable prior.</p>
+<p><strong>P4 — method frontier &amp; UX.</strong>
+- [ ] PLUMED/MDAnalysis/deeptime integrations; modern ML-CVs.
+- [ ] End-to-end discovery→refinement→WE/TIS pipeline with a single driver.
+- [ ] First-class CLI for stages/profiles; <code>--version</code>; typo-warning on unknown
+      config keys.</p>
+<hr />
+<p><em>See <code>tests/hpc/README.md</code> and <code>tests/hpc/DEBUGGING.md</code> for running the HPC test
+battery and interpreting its JSON results.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

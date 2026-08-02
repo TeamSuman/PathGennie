@@ -1,0 +1,1958 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://teamsuman.github.io/PathGennie/qmmm-workflow/">
+      
+      
+        <link rel="prev" href="../path-refinement/">
+      
+      
+        <link rel="next" href="../pca-cv/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>QM/MM Reactive Workflow - PathGennie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#qmmm-reactive-workflow" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="PathGennie" class="md-header__button md-logo" aria-label="PathGennie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            PathGennie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              QM/MM Reactive Workflow
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TeamSuman/PathGennie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorial/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../hpc/" class="md-tabs__link">
+          
+  
+  
+  HPC & Scaling
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../data-driven-cv/" class="md-tabs__link">
+          
+  
+  
+  Capabilities
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorials/01-quickstart-toy/" class="md-tabs__link">
+          
+  
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Project Roadmap
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="PathGennie" class="md-nav__button md-logo" aria-label="PathGennie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    PathGennie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TeamSuman/PathGennie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC & Scaling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    HPC & Scaling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hpc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-gpu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-GPU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HPC_REVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Review & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Capabilities
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-driven-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data-Driven CVs (SPIB)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path CVs (s, z)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-refinement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Refinement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QM/MM Reactive Workflow
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QM/MM Reactive Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-pathgennie-suits-reactive-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why PathGennie suits reactive systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backend-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend support
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Backend support">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-a-qm-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a QM method
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timestep-and-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timestep and constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four stages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The four stages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-discover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Discover
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-refine-into-a-pathcv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Refine into a PathCV
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-free-energy-along-s" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Free energy along s
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-validate-against-an-independent-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Validate against an independent reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semiempirical-geometry-dft-energetics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semiempirical geometry, DFT energetics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#convergence-criteria-drive-on-progress-stop-on-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convergence criteria: drive on progress, stop on product
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-mechanisms-off-a-2-d-plot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading mechanisms off a 2-D plot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cluster-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pca-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PCA Distance-CV Space
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy Profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weighted-ensemble/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weighted Ensemble
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../opes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OPES
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-sampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Sampling (TPS/TIS)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../non-linear-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Linear Search (RRT)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Controller
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/01-quickstart-toy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (toy)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/02-multi-gpu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-GPU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/03-spib-cv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPIB CV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/04-weighted-ensemble/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weighted Ensemble
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/05-strategy-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy Profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/06-rrt-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RRT Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/07-roadmap-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/08-opes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OPES
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/09-path-sampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Sampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/10-path-refinement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Refinement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="qmmm-reactive-workflow">QM/MM Reactive Workflow</h1>
+<p>PathGennie can generate <strong>bond-breaking, bond-forming</strong> paths under a QM or QM/MM
+Hamiltonian, refine them into a path collective variable, and compute a free
+energy along that CV — all at one level of theory.</p>
+<p>This page covers the complete pipeline. For a QM/MM <em>conformational</em> change (no
+chemistry), start instead with
+<a href="https://github.com/TeamSuman/PathGennie/tree/main/examples/qmmm_alanine_conformation"><code>examples/qmmm_alanine_conformation</code></a>,
+which is the cheapest way to confirm your AMBER QM/MM build works at all.</p>
+<h2 id="why-pathgennie-suits-reactive-systems">Why PathGennie suits reactive systems</h2>
+<p>The sampler biases <strong>selection</strong>, not forces: swarms of short <em>unbiased</em> segments
+are propagated, scored on a progress CV, and the best one is extended. Nothing is
+added to the Hamiltonian.</p>
+<p>That matters more for chemistry than for conformational change. A biasing
+potential on a reactive coordinate perturbs the electronic problem you are trying
+to solve, and any force-based bias has to be removed again before the energetics
+mean anything. Here the dynamics are the QM dynamics; only the <em>choice</em> of which
+segment to keep is biased, and the free energy is recovered by a separate
+unbiased stage (Weighted Ensemble) rather than by reweighting.</p>
+<p>The practical consequence is also useful: because segments are independent, the
+expensive QM force evaluations parallelise across walkers with no communication.</p>
+<h2 id="backend-support">Backend support</h2>
+<p><strong>AMBER (<code>sander</code>) is the only backend that can run a QM Hamiltonian.</strong> QM/MM is
+enabled by <code>ifqnt=1</code> plus a <code>&amp;qmmm</code> namelist, which PathGennie injects verbatim
+through <code>md.extra_text</code>:</p>
+<pre><code class="language-yaml">md:
+    controls:
+        ifqnt: 1
+        dt: 0.0005          # 0.5 fs -- see &quot;Timestep&quot; below
+        ntc: 1              # no constraints: SHAKE on a breaking bond is wrong
+        ntf: 1
+        ntb: 0              # gas phase; use 1 with a periodic box
+    extra_text: |
+        &amp;qmmm
+          qmmask=':1-2',
+          qmcharge=-1,
+          qm_theory='DFTB3',
+        /
+</code></pre>
+<p>Refinement and the free-energy stage reach AMBER through the engine-agnostic
+<a href="../path-refinement/#engine-agnostic-refinement"><code>EngineSampler</code></a>. Before that
+existed, refinement was OpenMM-only and this workflow was not possible.</p>
+<h3 id="choosing-a-qm-method">Choosing a QM method</h3>
+<p>Measured on a 6-atom gas-phase system, one CPU core:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Cost/step</th>
+<th>Use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DFTB3 / 3ob-3-1</td>
+<td><strong>20 ms</strong></td>
+<td>discovery, refinement, and long free-energy runs</td>
+</tr>
+<tr>
+<td>QUICK (GPU, <em>ab initio</em>)</td>
+<td>1.07 s (+~8 s launch)</td>
+<td>single-point refinement of key structures</td>
+</tr>
+</tbody>
+</table>
+<p>The launch overhead is the deciding factor, not the per-step cost: PathGennie
+issues one short segment per walker per cycle, so an 8-second process start is
+paid <em>per segment</em>. That makes semiempirical methods the right choice for the
+path-generation and sampling stages, with <em>ab initio</em> reserved for refining
+individual structures. DFTB3 with the 3ob-3-1 set covers H, C, N, O, P, S and the
+halogens.</p>
+<h3 id="timestep-and-constraints">Timestep and constraints</h3>
+<p>Use <strong><code>dt = 0.0005</code></strong> (0.5 fs) and <strong><code>ntc = 1</code>, <code>ntf = 1</code></strong>. Constraining bonds
+with SHAKE is standard practice in classical MD and actively wrong here — the
+bond you constrain may be the bond that has to break.</p>
+<h2 id="the-four-stages">The four stages</h2>
+<p>The worked reference is
+<a href="https://github.com/TeamSuman/PathGennie/tree/main/examples/qmmm_reactive_sn2/amber"><code>examples/qmmm_reactive_sn2/amber</code></a>
+(identity S<sub>N</sub>2, Cl⁻ + CH₃Cl → ClCH₃ + Cl⁻, DFTB3, all atoms QM).</p>
+<h3 id="1-discover">1. Discover</h3>
+<p>Run the driver in target mode on a reaction coordinate, once per seed. Each seed
+gives an independent reactive path; the ensemble is what stage 2 refines.</p>
+<p><strong>Reactive barriers need different swarm settings than conformational ones.</strong> For
+the S<sub>N</sub>2 case, the usual long-segment settings (τ₁ = τ₂ = 100, 8
+workers) produced <strong>no reaction in 300 cycles</strong> — the molecule vibrated in the
+reactant well, because thermal fluctuation over a 50 fs segment cannot deliver the
+concerted ~0.5 Å stretch and ~0.7 Å approach needed to reach the transition state.
+Short, greedy, many-trial settings converged at cycle 11 in 26 seconds:</p>
+<pre><code class="language-yaml">tau1_steps: 10          # short bursts -&gt; high selection pressure per unit time
+tau2_steps: 10          # minimal relaxation back into the reactant well
+max_trial: 30           # more chances at a productive fluctuation
+sigma: 0.05             # greedier softmax selection
+reject_worse_anchor: true
+</code></pre>
+<p>The rule of thumb: <strong>stiff enthalpic barrier → short τ</strong>; diffusive entropic
+barrier → long τ. This is the opposite of the guidance that suits conformational
+transitions.</p>
+<h3 id="2-refine-into-a-pathcv">2. Refine into a PathCV</h3>
+<p>Alternate short QM/MM exploration around the current path with a
+principal-curve/neural consensus fit until the path stops moving. Use
+<code>EngineSampler</code> with the <em>same</em> <code>&amp;qmmm</code> namelist as stage 1.</p>
+<p>Combine seeds by <strong>arc-length resampling before averaging</strong>. Averaging raw frames
+is meaningless — seeds have different lengths and different dwell times, so frame
+<em>k</em> of one is not frame <em>k</em> of another.</p>
+<h3 id="3-free-energy-along-s">3. Free energy along <code>s</code></h3>
+<p>Bin Weighted Ensemble on the path progress coordinate <code>s</code>:</p>
+<pre><code class="language-python">def s_of(coords):
+    s, _z = path_cv.compute(np.atleast_2d(feature_fn(coords)))
+    return float(s)
+
+stage = WeightedEnsembleStage(cv_fn=s_of, tau_steps=100, n_iterations=200,
+                              bin_edges=np.linspace(0, 1, 17), target_count=8,
+                              kT=0.0019872041 * 300)
+</code></pre>
+<p>WE propagates walkers under the plain QM/MM Hamiltonian and splits/merges only
+their statistical <em>weights</em>, so the profile needs no reweighting.</p>
+<p>Seed one walker per <code>s</code> bin. WE only splits walkers that <em>reach</em> a bin, so a run
+started entirely in the reactant well spends its whole budget crawling out.</p>
+<h3 id="4-validate-against-an-independent-reference">4. Validate against an independent reference</h3>
+<p><code>5_neb_reference.py</code> in the worked example does both of the following in ~2 minutes
+(<code>--beads 16 --rescore</code>).</p>
+<p>Two checks are worth the cost:</p>
+<ul>
+<li><strong>A transition state from an independent method.</strong> A constrained
+  symmetric-stretch scan and an AMBER NEB (<code>ineb=1</code>, with <code>skmin</code>/<code>skmax</code> and
+  <code>tgtfitmask</code>/<code>tgtrmsmask</code>, run under <code>sander.MPI</code> as a multi-replica job) gave
+  2.3565 Å and 2.3579 Å for the S<sub>N</sub>2 case — agreement to 0.001 Å. Run
+  the reference <strong>at the same level of theory</strong> as the path, or the comparison
+  measures the method difference rather than the path.</li>
+<li><strong>A geometric signature of the mechanism.</strong> For S<sub>N</sub>2 the decisive
+  test is the sign flip of the CH₃ umbrella coordinate — Walden inversion.
+  Distances alone cannot distinguish backside from frontside attack.</li>
+</ul>
+<blockquote>
+<p>When locating a <em>symmetric</em> transition state by scanning the symmetric stretch,
+take the <strong>minimum</strong> of the scanned energy, not the maximum. A saddle point is a
+maximum along the reaction coordinate but a <strong>minimum</strong> along every orthogonal
+one, and the symmetric stretch is orthogonal.</p>
+</blockquote>
+<h3 id="semiempirical-geometry-dft-energetics">Semiempirical geometry, DFT energetics</h3>
+<p>Measured on the S<sub>N</sub>2 case, all on the same 16-bead NEB band:</p>
+<table>
+<thead>
+<tr>
+<th>level</th>
+<th>barrier</th>
+<th>TS geometry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DFTB3</td>
+<td>3.56 kcal/mol</td>
+<td>2.3558 Å — matches an independent scan to <strong>0.0007 Å</strong></td>
+</tr>
+<tr>
+<td>B3LYP/6-31+G* // DFTB3</td>
+<td>8.23 kcal/mol</td>
+<td>(single points on the same geometries)</td>
+</tr>
+<tr>
+<td>CCSD(T) reference</td>
+<td>≈13 kcal/mol</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>DFTB3 gets the structure right and the barrier wrong</strong> — about fourfold low here, which is typical
+of semiempirical methods for S<sub>N</sub>2. Re-scoring the relaxed geometries at DFT more than
+doubles the barrier and costs ~90 s for 16 single points; the residual gap is the known B3LYP
+underestimate for anionic transition states. This is what makes the two-tier design work: sample
+where geometry matters and cost is 20 ms/step, then re-score once at the end.</p>
+<p>Two things to keep straight: <code>DFT//DFTB3</code> is a single point on someone else's geometry, not a DFT
+minimum-energy path; and <strong>diffuse functions are not optional</strong> for an anionic reaction — use at
+least <code>6-31+G*</code>.</p>
+<blockquote>
+<p><strong>Watch shallow gas-phase minima during endpoint preparation.</strong> Minimising the S<sub>N</sub>2
+product endpoint for 500 cycles instead of 300 dissociated the ion–dipole complex to
+d(C–Cl) ≈ 900 Å — and still wrote a perfectly valid restart file, which then poisoned the entire
+band with no error raised anywhere. Check the <em>geometry</em> a stage produces, not just that it
+produced a file.</p>
+</blockquote>
+<h2 id="convergence-criteria-drive-on-progress-stop-on-product">Convergence criteria: drive on progress, stop on product</h2>
+<p>This is the failure mode most likely to produce a wrong result quietly.</p>
+<p>A convergence function written as a <em>difference of distances</em> —
+ξ = d(C–X_leaving) − d(C–Y_attacking) &gt; threshold — is satisfied by one distance
+growing alone. It does not require the new bond to form.</p>
+<p>Running the S<sub>N</sub>2 protocol unchanged on the tertiary substrate
+(CH₃)₃C–Cl + Br⁻, <strong>all 10 seeds reported <code>Converged</code> and none produced
+tert-butyl bromide</strong>: chloride left (d(C–Cl) 3.6–3.8 Å) while Br⁻ loitered at
+2.70–2.99 Å without ever bonding to carbon (a C–Br bond is ~1.99 Å). A
+lower-barrier channel existed and the criterion could not tell the difference.</p>
+<p>State convergence as a condition on the <strong>product</strong>:</p>
+<pre><code class="language-python">def reacted(coords, **kwargs):
+    return bool(d(C, Y_attacking) &lt; 2.1 and d(C, X_leaving) &gt; 3.0)
+</code></pre>
+<p>A progress CV is the right thing to <em>drive</em> on and a poor thing to <em>stop</em> on.
+Several shipped example configs use the distance-difference pattern; it is safe
+in those cases only because the intended product is the sole accessible route to
+a large CV value. Check that this holds for your system before reusing it.</p>
+<p>(The tertiary run is instructive on its own: PathGennie found <strong>E2 elimination in
+8 of 10 seeds</strong> — confirmed by two independent signatures, a formed H–Br bond and
+a formed C=C bond — while being <em>driven</em> on a substitution coordinate. Tertiary
+substrates eliminate rather than undergo backside substitution, so this is the
+chemically correct answer, and evidence that the sampler follows the physics
+rather than obediently satisfying the coordinate it was handed.)</p>
+<h2 id="reading-mechanisms-off-a-2-d-plot">Reading mechanisms off a 2-D plot</h2>
+<p>Plotting paths on the plane of the forming and breaking bond distances separates
+mechanisms visually, which is the quickest way to see what a run actually did:</p>
+<table>
+<thead>
+<tr>
+<th>Mechanism</th>
+<th>Signature on d(C–Y_attacking) vs d(C–X_leaving)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S<sub>N</sub>2</td>
+<td>crosses the diagonal near the d₁ = d₂ symmetry line (concerted)</td>
+</tr>
+<tr>
+<td>S<sub>N</sub>1</td>
+<td>an L-shaped detour through the both-bonds-long corner (free carbocation), then capture</td>
+</tr>
+<tr>
+<td>E1 / E2</td>
+<td>never reaches short d(C–Y); the trace is truncated because the path leaves this plane entirely</td>
+</tr>
+</tbody>
+</table>
+<p>Add the elimination coordinates (H–Y distance, C=C distance) as a second pair of
+axes to resolve E1 from E2. <code>4_plot_2d_cv.py</code> in the S<sub>N</sub>2 example takes
+<code>--extra 'label=path.npy'</code> to overlay a second substrate in the same axes.</p>
+<p>Define the feature map <strong>once</strong> and import it into every stage. Two stages that
+disagree on component order silently transpose the axes of the final figure, and
+for a symmetric reaction that is nearly invisible.</p>
+<h2 id="cluster-notes">Cluster notes</h2>
+<ul>
+<li>Source AMBER's <code>amber.sh</code> <strong>with <code>set +u</code></strong>. It references unbound variables
+  such as <code>PERL5LIB</code> and will abort an otherwise-correct job script under
+  <code>set -u</code>.</li>
+<li><code>sander.MPI</code> (needed for NEB) links the system OpenMPI. If a conda environment
+  puts MPICH on <code>PATH</code> first, the launcher and the library disagree and the job
+  fails confusingly — prepend the correct MPI <code>bin</code>/<code>lib</code> before running.</li>
+<li>AMBER restart files default to NetCDF (<code>ntxo = 2</code>). Set <code>ntxo: 1</code> for ASCII if
+  you need to read them with PathGennie's own <code>read_rst7_coords</code>; otherwise read
+  them with <code>parmed</code>.</li>
+<li>QM/MM runs are CPU-bound and single-threaded per walker. Request one core per
+  worker and scale by walker count, not by threads.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
