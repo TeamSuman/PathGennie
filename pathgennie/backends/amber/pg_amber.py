@@ -37,8 +37,12 @@ from .utils import (
 )
 
 
-def run(case_dir: Path, config_name: str = "input.yaml") -> None:
-    case_dir = case_dir.resolve()
+def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
+    # Accept a plain string as well as a Path. Callers naturally write run(".", ...) and
+    # the resulting AttributeError ('str' object has no attribute 'resolve') fires only
+    # after the engine has been constructed, so a QM/MM job can burn its setup before
+    # failing on a path type.
+    case_dir = Path(case_dir).resolve()
     os.chdir(case_dir)
     cfg_model = load_config(case_dir / config_name)
     cfg = cfg_model.model_dump(exclude_none=True)
