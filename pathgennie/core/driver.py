@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
+import warnings
+
 import numpy as np
 
 from .engine import Engine, Handle
@@ -109,6 +111,18 @@ class PathGennieDriver:
         (e.g. Weighted Ensemble). Default behaviour and the 2-tuple return are
         unchanged.
         """
+        # tau2 must never exceed tau1. tau1 is the exploratory push across the barrier
+        # (fresh velocities, best of max_trial kept); tau2 is the relaxation that follows
+        # with velocities continued. Relaxing for longer than you pushed lets the downward
+        # fall cancel the progress just made. Checked here rather than per-backend so no
+        # YAML config can violate it silently in any of them.
+        if int(tau2) > int(tau1):
+            warnings.warn(
+                f"tau2_steps ({tau2}) exceeds tau1_steps ({tau1}): the relaxation segment is "
+                "longer than the exploratory push, which can cancel progress. This was a hard "
+                "error; it is a warning while the tau2 scan tests whether the rule holds.",
+                RuntimeWarning, stacklevel=2,
+            )
         ckpt_freq = self.checkpoint_freq if checkpoint_freq is None else max(0, int(checkpoint_freq))
         start_cycle = 0
 

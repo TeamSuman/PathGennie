@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence
 
+import warnings
+
 import numpy as np
 
 from pathgennie.core.engine import Engine, Handle
@@ -61,8 +63,8 @@ class RRT:
         *,
         lower: Sequence[float],
         upper: Sequence[float],
-        tau1: int = 5,
-        tau2: int = 10,
+        tau1: int = 10,
+        tau2: int = 5,
         n_expand: int = 8,
         sigma: float = 0.05,
         goal_bias: float = 0.1,
@@ -73,6 +75,18 @@ class RRT:
         self.cv_fn = cv_fn
         self.lower = np.asarray(lower, dtype=float)
         self.upper = np.asarray(upper, dtype=float)
+        # tau2 must never exceed tau1. tau1 is the exploratory push (fresh velocities,
+        # softmax-selected toward q_rand); tau2 is the relaxation that follows it with
+        # velocities continued. Relax for longer than you pushed and the downward fall
+        # simply cancels the progress the push just made. The previous defaults here were
+        # tau1=5, tau2=10 -- a 2x violation, so every RRT run using them spent twice as long
+        # undoing its own steps as making them.
+        if int(tau2) > int(tau1):
+            warnings.warn(
+                f"tau2 ({tau2}) exceeds tau1 ({tau1}): the relaxation segment is longer than "
+                "the exploratory push. Downgraded from a hard error pending the tau2 scan.",
+                RuntimeWarning, stacklevel=2,
+            )
         self.tau1 = int(tau1)
         self.tau2 = int(tau2)
         self.n_expand = int(n_expand)
@@ -139,6 +153,49 @@ class RRT:
             self.engine.release(chosen)
         return self.add_node(runner, node.id)
 
+    def connect(self, node: Node, q_target: np.ndarray, *, tol: float,
+                max_steps: int = 25, patience: int = 5) -> tuple["Node", bool]:
+        """The textbook RRT-Connect CONNECT operator: extend REPEATEDLY toward ``q_target``
+        until it is reached or progress stalls.
+
+        ``extend`` alone advances one swarm-step, and on a QM/MM system that step is tiny:
+        measured at 0.05 normalised CV units for tau1=20, and essentially independent of both
+        tau1 (~tau1^0.33, so 50x longer segments buy only 3.7x distance) and n_expand (flat
+        from 8 to 44 trials, because all trials share an anchor and propagate the same 10 fs).
+        Single-extend growth is therefore diffusive, and covering a 3-D CV box at that step
+        needs ~(1.5/0.05)^3 ~ 27,000 nodes -- unaffordable at QM/MM cost.
+
+        Repeated extension toward a fixed target is directional instead of diffusive, which is
+        what makes RRT-Connect fast in the literature. ``rrt_connect`` previously called a
+        single ``extend`` here, which is a genuine departure from the published algorithm
+        rather than a tuning choice.
+
+        Stops on: reaching ``tol``, failing to reduce the distance to target (blocked), or
+        ``max_steps``. Returns ``(last_node, reached)``.
+        """
+        # Progress is compared against the BEST distance so far, with patience, not against the
+        # previous step. A strict "d_new >= d_prev -> blocked" test is right for deterministic
+        # motion planning but wrong for thermal MD: the step here is ~0.05 CV units while the
+        # thermal fluctuation is comparable, so roughly half of all single steps move away from
+        # the target by chance. Measured on t-BuCl + Br-, that test aborted CONNECT after 1-3 of
+        # 25 steps and covered 1% of the gap -- indistinguishable from a single extend.
+        current = node
+        d_best = float(np.linalg.norm(current.cv - q_target))
+        stalled = 0
+        for _ in range(max_steps):
+            nxt = self.extend(current, q_target)
+            d_new = float(np.linalg.norm(nxt.cv - q_target))
+            if d_new <= tol:
+                return nxt, True
+            if d_new < d_best - 1e-9:
+                d_best, stalled = d_new, 0
+            else:
+                stalled += 1
+                if stalled >= patience:
+                    return nxt, False
+            current = nxt
+        return current, False
+
     def path_to(self, node: Node) -> List[Node]:
         chain: List[Node] = []
         current: Optional[Node] = node
@@ -181,14 +238,16 @@ def rrt_connect(
     *,
     lower: Sequence[float],
     upper: Sequence[float],
-    tau1: int = 5,
-    tau2: int = 10,
+    tau1: int = 10,     # tau2 <= tau1 always -- see RRT.__init__ for why
+    tau2: int = 5,
     n_expand: int = 8,
     sigma: float = 0.05,
     executor: Optional[ParallelExecutor] = None,
     seed: int = 0,
     max_iter: int = 200,
     connect_tol: float = 0.3,
+    connect_max_steps: int = 25,
+    connect_patience: int = 5,
 ) -> RRTResult:
     """Bidirectional RRT-Connect between two configurations.
 
@@ -209,8 +268,11 @@ def rrt_connect(
         q = a.sample_target(None)
         a_new = a.extend(a.nearest(q), q)
 
-        # Greedily grow b toward a_new.
-        b_node = b.extend(b.nearest(a_new.cv), a_new.cv)
+        # Greedily grow b toward a_new -- the CONNECT operator, i.e. extend repeatedly until
+        # reached or blocked. A single extend() here (the previous behaviour) makes tree growth
+        # diffusive rather than directional; see RRT.connect for the measurements.
+        b_node, _ = b.connect(b.nearest(a_new.cv), a_new.cv, tol=connect_tol,
+                              max_steps=connect_max_steps, patience=connect_patience)
         if np.linalg.norm(b_node.cv - a_new.cv) <= connect_tol:
             path_a = a.path_to(a_new)
             path_b = b.path_to(b_node)

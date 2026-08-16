@@ -38,6 +38,7 @@ class PathRefinementConfig:
     device: str = "cpu"
     verbosity: int = 1
     # --- Parallel walker settings ---
+    convergence_tol: float = 1e-3  # max node displacement, in FEATURE-SPACE units
     n_workers: int = 1   # Number of parallel worker processes (1 = serial)
     worker_device: int = 0  # GPU DeviceIndex for each worker simulation
 
@@ -338,7 +339,12 @@ class PathRefiner:
             if self.config.verbosity > 0:
                 print(f"  Max path update: {diff:.4f}")
 
-            if diff < 1e-3:  # hardcoded simple tolerance
+            # Tolerance must match the feature space's units. The old hardcoded 1e-3 is
+            # sensible for a normalised or toy-potential space, but this project's features
+            # are raw Angstrom, where the swarm-string ground truth still moves ~0.05 A per
+            # iteration at convergence -- so 1e-3 is ~50x below the method's own noise floor
+            # and unreachable by construction.
+            if diff < self.config.convergence_tol:
                 print("Converged.")
                 converged = True
                 break

@@ -144,6 +144,25 @@ def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
     from .utils import read_rst7_box
     box = read_rst7_box(initial_restart)
 
+    # The prmtop's %FLAG BOX_DIMENSIONS records the box tleap wrote at SOLVATION time, before
+    # any NPT equilibration. topology_info["box_lengths"] is read from there, and it feeds both
+    # write_native_trajectory() and wrap_frames_pbc(). For an equilibrated system that box is
+    # simply wrong -- on the t-BuCl/Br- system it said 41.55/41.89/46.26 A against a true
+    # 37.50/37.81/41.75 A, so every saved trajectory was labelled ~4 A too large per dimension.
+    #
+    # That is silent and it poisons everything downstream that trusts the file: minimum-image
+    # distances gain spurious sub-Angstrom contacts (32 pairs below 0.3 A on frames that are
+    # actually clean), and sander re-reading the trajectory produces overflowed VDWAALS and
+    # nonsense energies. The dynamics themselves were never affected -- the engine gets the
+    # correct box above and clone_anchor copies restarts verbatim -- but the exported
+    # trajectory was unusable for any periodic analysis.
+    #
+    # The restart is the only source that knows the CURRENT box, so it wins here.
+    if box is not None:
+        b = np.asarray(box, dtype=float).ravel()[:3]
+        if b.shape == (3,) and np.all(b > 0.0):
+            topology_info["box_lengths"] = b
+
     engine = CoreAmberEngine(
         topology=topology,
         executable=executable,
