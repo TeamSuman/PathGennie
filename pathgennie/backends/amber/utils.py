@@ -345,6 +345,34 @@ def write_multimodel_pdb(path: Path, topology_info: dict[str, object], frames: n
         handle.write("END\n")
 
 
+def unitcell_dimensions(topology_info: dict[str, object]) -> "np.ndarray | None":
+    """Unit cell as MDAnalysis dimensions ``[a, b, c, alpha, beta, gamma]`` (Angstrom/degrees),
+    or ``None`` when the topology carries no usable cell.
+
+    Prefers ``topology_info["box_vectors"]`` -- the full 3x3 cell -- and only falls back to
+    ``box_lengths`` (assuming 90 degree angles) when no vectors are available. The fallback is
+    correct *only* for an orthorhombic box: writing 90/90/90 for a triclinic cell such as the
+    rhombic dodecahedron that GROMACS solvation produces silently inflates the cell volume and
+    corrupts every minimum-image calculation a downstream consumer does with the trajectory's
+    own cell record (coordination numbers, contact maps, distances across a periodic face).
+    """
+
+    box_vectors = topology_info.get("box_vectors")
+    if box_vectors is not None:
+        vectors = np.asarray(box_vectors, dtype=float)
+        if vectors.shape == (3, 3) and np.all(np.linalg.norm(vectors, axis=1) > 0.0):
+            from MDAnalysis.lib.mdamath import triclinic_box
+
+            return np.asarray(triclinic_box(*vectors), dtype=np.float32)
+
+    box_lengths = topology_info.get("box_lengths")
+    if box_lengths is not None:
+        box = np.asarray(box_lengths, dtype=np.float32)
+        if box.shape == (3,) and np.all(box > 0.0):
+            return np.array([box[0], box[1], box[2], 90.0, 90.0, 90.0], dtype=np.float32)
+    return None
+
+
 def write_native_trajectory(
     path: Path, topology_info: dict[str, object], frames: np.ndarray, *, dt: float | None = None,
 ) -> None:
@@ -375,12 +403,7 @@ def write_native_trajectory(
     path.parent.mkdir(parents=True, exist_ok=True)
     n_atoms = frames.shape[1]
     universe = mda.Universe.empty(n_atoms, trajectory=True)
-    box_lengths = topology_info.get("box_lengths")
-    dimensions = None
-    if box_lengths is not None:
-        box = np.asarray(box_lengths, dtype=np.float32)
-        if box.shape == (3,) and np.all(box > 0.0):
-            dimensions = np.array([box[0], box[1], box[2], 90.0, 90.0, 90.0], dtype=np.float32)
+    dimensions = unitcell_dimensions(topology_info)
 
     writer_kwargs: dict = {"n_atoms": n_atoms}
     if dt is not None:

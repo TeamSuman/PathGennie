@@ -18,6 +18,7 @@ from pathgennie.backends.amber.utils import (
 
 __all__ = [
     "enrich_args",
+    "gro_box_vectors",
     "load_function",
     "read_gro_coords",
     "read_masses_from_topology",
@@ -177,10 +178,12 @@ def read_gro_topology_info(path: str | Path) -> dict[str, object]:
         residue_indices.setdefault(residue_name, []).append(np.asarray(indices, dtype=int))
 
     box_lengths = None
+    box_vectors = None
     if len(lines) > 2 + natom:
         box_values = [float(value) for value in lines[2 + natom].split()]
         if len(box_values) >= 3:
             box_lengths = np.asarray(box_values[:3], dtype=float) * 10.0
+            box_vectors = gro_box_vectors(box_values) * 10.0
 
     return {
         "atom_names": atom_names,
@@ -191,8 +194,31 @@ def read_gro_topology_info(path: str | Path) -> dict[str, object]:
         "masses": np.ones(natom, dtype=float),
         "masses_are_placeholder": True,
         "box_lengths": box_lengths,
+        # Full 3x3 unit cell in Angstrom (rows = lattice vectors). `box_lengths` keeps only
+        # the diagonal and therefore silently describes a triclinic cell (a rhombic
+        # dodecahedron, say) as if it were orthorhombic; anything that needs the real cell
+        # -- minimum-image distances, wrapping, a trajectory writer's unit-cell record --
+        # must use this instead.
+        "box_vectors": box_vectors,
         "residue_indices": residue_indices,
     }
+
+
+def gro_box_vectors(box_values) -> np.ndarray:
+    """Reconstruct the 3x3 box matrix (rows = lattice vectors, same units as the input) from
+    the numbers on a .gro file's last line.
+
+    GROMACS writes either 3 numbers (v1x v2y v3z; orthorhombic) or 9
+    (v1x v2y v3z v1y v1z v2x v2z v3x v3y), with v1y = v1z = v2z = 0 by convention.
+    """
+    v = [float(x) for x in box_values]
+    if len(v) < 3:
+        raise ValueError(f"a .gro box line needs at least 3 numbers, got {len(v)}")
+    if len(v) < 9:
+        return np.array([[v[0], 0.0, 0.0], [0.0, v[1], 0.0], [0.0, 0.0, v[2]]], dtype=float)
+    return np.array(
+        [[v[0], v[3], v[4]], [v[5], v[1], v[6]], [v[7], v[8], v[2]]], dtype=float
+    )
 
 
 def read_pdb_topology_info(path: str | Path) -> dict[str, object]:

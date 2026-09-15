@@ -216,3 +216,101 @@ def test_prmtop_readers_accept_str_paths():
     from_str = parse_prmtop(str(prmtop))
     assert from_str["atom_names"] == from_path["atom_names"]
     assert len(read_prmtop_flag(str(prmtop), "ATOM_NAME")) > 0
+
+
+# ---------------------------------------------------------------------------
+# Triclinic unit cell — the trajectory writer must record the real cell, not a
+# 90/90/90 box built from the diagonal alone.
+# ---------------------------------------------------------------------------
+
+def test_gro_box_vectors_orthorhombic_and_triclinic():
+    from pathgennie.backends.gromacs.utils import gro_box_vectors
+
+    np.testing.assert_allclose(
+        gro_box_vectors([2.0, 3.0, 4.0]),
+        [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]],
+    )
+    # GROMACS order: v1x v2y v3z v1y v1z v2x v2z v3x v3y (v1y=v1z=v2z=0 by convention)
+    np.testing.assert_allclose(
+        gro_box_vectors([5.0, 5.0, 3.5, 0.0, 0.0, 0.0, 0.0, 2.5, 2.5]),
+        [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [2.5, 2.5, 3.5]],
+    )
+
+
+def _dodecahedron_gro(tmp_path, n_atoms=3):
+    """A minimal .gro with a rhombic-dodecahedron (triclinic) box line."""
+    lines = ["triclinic test", f"{n_atoms:5d}"]
+    for i in range(n_atoms):
+        lines.append(f"{1:5d}{'SOL':>5s}{'OW':>5s}{i + 1:5d}{0.1 * i:8.3f}{0.2 * i:8.3f}{0.3 * i:8.3f}")
+    # 5.91225 5.91225 4.18059 0 0 0 0 2.95613 2.95613 (rfah_ctd's equilibrated 300 K fold-A box)
+    lines.append("   5.91225   5.91225   4.18059   0.00000   0.00000   0.00000   0.00000   2.95613   2.95613")
+    p = tmp_path / "triclinic.gro"
+    p.write_text("\n".join(lines) + "\n")
+    return p
+
+
+def test_read_topology_info_keeps_the_full_triclinic_cell(tmp_path):
+    from pathgennie.backends.gromacs.utils import read_topology_info
+
+    info = read_topology_info(_dodecahedron_gro(tmp_path))
+    # box_lengths keeps only the diagonal (Angstrom) — kept for backward compatibility
+    np.testing.assert_allclose(info["box_lengths"], [59.1225, 59.1225, 41.8059], rtol=1e-6)
+    # box_vectors carries the off-diagonal terms that make it a dodecahedron
+    np.testing.assert_allclose(
+        info["box_vectors"],
+        [[59.1225, 0.0, 0.0], [0.0, 59.1225, 0.0], [29.5613, 29.5613, 41.8059]],
+        rtol=1e-6,
+    )
+
+
+def test_unitcell_dimensions_prefers_vectors_over_the_diagonal(tmp_path):
+    pytest.importorskip("MDAnalysis")
+    from pathgennie.backends.amber.utils import unitcell_dimensions
+    from pathgennie.backends.gromacs.utils import read_topology_info
+
+    info = read_topology_info(_dodecahedron_gro(tmp_path))
+    dims = unitcell_dimensions(info)
+    assert dims is not None
+    # a = b = 59.1225 A; c = |(29.5613, 29.5613, 41.8059)| = 59.1225 A for a dodecahedron
+    np.testing.assert_allclose(dims[:3], [59.1225, 59.1225, 59.1225], rtol=1e-5)
+    # the defining dodecahedron angles: alpha = beta = 60, gamma = 90
+    np.testing.assert_allclose(dims[3:], [60.0, 60.0, 90.0], atol=1e-3)
+    # falling back to the diagonal alone (the old behaviour) would have said 90/90/90
+    diag_only = unitcell_dimensions({"box_lengths": info["box_lengths"]})
+    np.testing.assert_allclose(diag_only[3:], [90.0, 90.0, 90.0])
+
+
+@pytest.mark.parametrize("ext", ["dcd", "xtc"])
+def test_write_native_trajectory_records_the_triclinic_cell(tmp_path, ext):
+    """Regression: the writer used to emit [lx, ly, lz, 90, 90, 90] from box_lengths, so a
+    rhombic-dodecahedron run produced a trajectory claiming an orthorhombic cell ~1.4x too
+    large in volume."""
+    mda = pytest.importorskip("MDAnalysis")
+    from pathgennie.backends.gromacs.utils import read_topology_info
+
+    info = read_topology_info(_dodecahedron_gro(tmp_path))
+    n_atoms = 3
+    frames = np.random.default_rng(3).standard_normal((2, n_atoms, 3)).astype(np.float32)
+    out = tmp_path / f"traj.{ext}"
+    write_native_trajectory(out, info, frames, dt=1.0)
+
+    u = mda.Universe.empty(n_atoms, trajectory=True)
+    u.load_new(str(out))
+    for ts in u.trajectory:
+        np.testing.assert_allclose(ts.dimensions[:3], [59.1225, 59.1225, 59.1225], rtol=1e-4)
+        np.testing.assert_allclose(ts.dimensions[3:], [60.0, 60.0, 90.0], atol=1e-2)
+
+
+def test_write_native_trajectory_orthorhombic_fallback_unchanged(tmp_path):
+    """A topology with only box_lengths (e.g. a prmtop) still gets the 90/90/90 cell."""
+    mda = pytest.importorskip("MDAnalysis")
+
+    n_atoms = 4
+    frames = np.zeros((2, n_atoms, 3), dtype=np.float32)
+    out = tmp_path / "ortho.xtc"
+    write_native_trajectory(out, {"box_lengths": np.array([30.0, 40.0, 50.0])}, frames, dt=1.0)
+
+    u = mda.Universe.empty(n_atoms, trajectory=True)
+    u.load_new(str(out))
+    for ts in u.trajectory:
+        np.testing.assert_allclose(ts.dimensions, [30.0, 40.0, 50.0, 90.0, 90.0, 90.0], rtol=1e-4)
