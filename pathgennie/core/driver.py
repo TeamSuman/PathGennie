@@ -26,7 +26,7 @@ Correctness fixes relative to the original backends:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
@@ -76,6 +76,11 @@ class PathGennieDriver:
         self.save_subframes = bool(save_subframes)
         self.subframe_stride = max(1, int(subframe_stride))
         self.checkpoint_freq = max(0, int(checkpoint_freq))
+        #: Per-cycle ``(tau1, tau2, max_trial)`` recorded by the most recent
+        #: ``run()`` call when it was given a ``schedule``; reset to ``[]`` at
+        #: the start of every ``run()`` call, and stays ``[]`` when no
+        #: ``schedule`` is passed (unchanged behaviour).
+        self.schedule_history: List[Tuple[int, int, int]] = []
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -96,6 +101,7 @@ class PathGennieDriver:
         collect_seeds: bool = False,
         checkpoint_path: Optional[str] = None,
         checkpoint_freq: Optional[int] = None,
+        schedule: Optional[Callable[[int, np.ndarray], Tuple[int, int, int]]] = None,
     ):
         """Run the adaptive cycle and return ``(trajectory, metrics)`` arrays.
 
@@ -108,7 +114,21 @@ class PathGennieDriver:
         the trajectory frames, for handing to a downstream sampling stage
         (e.g. Weighted Ensemble). Default behaviour and the 2-tuple return are
         unchanged.
+
+        ``schedule`` (optional): called once per cycle as
+        ``schedule(cycle, anchor_cv)`` — ``anchor_cv`` is the CV of the anchor
+        as it stands at the *start* of that cycle (the initial handle's CV for
+        cycle 0) — and must return ``(tau1, tau2, max_trial)`` to use for that
+        cycle, overriding the ``tau1``/``tau2``/``max_trial`` arguments above
+        for the cycle's swarm and runner segments. Every call's return value is
+        appended to ``self.schedule_history`` (reset to ``[]`` at the start of
+        this method), so a schedule that varies (tau1, tau2, max_trial) with
+        cycle number and the current CV -- e.g. annealing segment lengths, or
+        widening the swarm near a barrier -- can be inspected afterwards. When
+        ``schedule`` is None (the default) behaviour is unchanged and
+        ``schedule_history`` stays empty.
         """
+        self.schedule_history = []
         ckpt_freq = self.checkpoint_freq if checkpoint_freq is None else max(0, int(checkpoint_freq))
         start_cycle = 0
 
@@ -175,7 +195,7 @@ class PathGennieDriver:
             try:
                 handle = self.engine.clone_anchor(anchor)
                 seg = self.engine.run_segment(
-                    handle, tau1, randomize_velocities=True,
+                    handle, cur_tau1, randomize_velocities=True,
                     seed=cycle_seeds[trial_index], device=device,
                 )
                 coords = self.engine.get_coords(seg)
@@ -204,16 +224,23 @@ class PathGennieDriver:
         for cycle in range(start_cycle, max_cycle):
             previous_anchor = anchor
 
+            if schedule is not None:
+                sched_tau1, sched_tau2, sched_max_trial = schedule(cycle, anchor_cv)
+                cur_tau1, cur_tau2, cur_max_trial = int(sched_tau1), int(sched_tau2), int(sched_max_trial)
+                self.schedule_history.append((cur_tau1, cur_tau2, cur_max_trial))
+            else:
+                cur_tau1, cur_tau2, cur_max_trial = tau1, tau2, max_trial
+
             # Draw all per-trial seeds up front on the main thread so the
             # seed -> trial mapping is deterministic regardless of executor
             # scheduling (numpy's Generator is not thread-safe). This makes a
             # seeded run reproducible under ThreadDevicePool, matching Serial.
-            cycle_seeds = [self._seed() for _ in range(max_trial)]
-            all_trials = self.executor.map(worker, list(range(max_trial)))
+            cycle_seeds = [self._seed() for _ in range(cur_max_trial)]
+            all_trials = self.executor.map(worker, list(range(cur_max_trial)))
             trials = [t for t in all_trials if t is not None]
             if not trials:
                 raise RuntimeError(
-                    f"all {max_trial} trials failed at cycle {cycle}; the run cannot "
+                    f"all {cur_max_trial} trials failed at cycle {cycle}; the run cannot "
                     "continue. Quarantining individual trials is deliberate, but a "
                     "wholly failed cycle indicates a systematic problem (bad "
                     "topology, missing executable, exhausted scratch) rather than an "
@@ -237,7 +264,7 @@ class PathGennieDriver:
             tau2_handle = None
             try:
                 tau2_handle = self.engine.run_segment(
-                    chosen.handle, tau2, randomize_velocities=False,
+                    chosen.handle, cur_tau2, randomize_velocities=False,
                     seed=tau2_seed, device=tau2_device,
                 )
                 tau2_coords = self.engine.get_coords(tau2_handle)
@@ -313,7 +340,7 @@ class PathGennieDriver:
                 tau2_replay_handle = None
                 try:
                     tau1_result = self.engine.run_segment(
-                        replay_handle, tau1, randomize_velocities=True,
+                        replay_handle, cur_tau1, randomize_velocities=True,
                         seed=cycle_seeds[chosen_idx], device=tau2_device,
                         save_subframes=True, subframe_stride=self.subframe_stride,
                     )
@@ -322,7 +349,7 @@ class PathGennieDriver:
                     subframe_blocks = [tau1_subframes]
                     if new_anchor == tau2_handle:
                         tau2_result = self.engine.run_segment(
-                            tau1_replay_handle, tau2, randomize_velocities=False,
+                            tau1_replay_handle, cur_tau2, randomize_velocities=False,
                             seed=tau2_seed, device=tau2_device,
                             save_subframes=True, subframe_stride=self.subframe_stride,
                         )
