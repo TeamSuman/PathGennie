@@ -331,6 +331,37 @@ def test_extend_quarantines_a_nonfinite_trial_and_counts_it():
     assert all(np.isfinite(node.cv).all() for node in rrt.nodes)
 
 
+def test_extend_quarantines_a_nonfinite_tau2_runner_and_skips_the_expansion():
+    """A cv_fn that returns a non-finite CV only for the tau2 runner segment
+    (every swarm trial stays finite) must have that runner released and
+    counted in n_diverged, and the expansion skipped entirely -- unlike a
+    diverged swarm trial, there is no fallback candidate for tau2, so no node
+    is added for this extend() call at all."""
+    engine = ToyLangevinEngine(dt=0.005, kT=1.0)
+    start = engine.create_state(BASIN_A)
+
+    calls = {"n": 0}
+
+    def flaky_cv(coords):
+        calls["n"] += 1
+        # Call #1 is the root node; calls #2-#5 are the n_expand=4 swarm
+        # trials (all finite); call #6 is the tau2 runner -- make only that
+        # one diverge.
+        if calls["n"] == 6:
+            return np.array([np.nan, np.nan])
+        return np.array([coords[0, 0], coords[0, 1]])
+
+    rrt = RRT(
+        engine, flaky_cv, lower=[-2.0, -2.0], upper=[2.0, 2.0],
+        tau1=4, tau2=8, n_expand=4, executor=SerialExecutor(), seed=0,
+    )
+    result = rrt.build(start, max_iter=1, goal_tol=0.5)
+
+    assert result.n_diverged == 1
+    assert result.tree_size == 1  # only the root -- the diverged tau2 expansion added nothing
+    assert all(np.isfinite(node.cv).all() for node in rrt.nodes)
+
+
 def test_extend_raises_if_every_trial_diverges():
     engine = ToyLangevinEngine(dt=0.005, kT=1.0)
     start = engine.create_state(BASIN_A)

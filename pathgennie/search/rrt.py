@@ -135,8 +135,8 @@ class RRT:
         raw = np.atleast_1d(np.asarray(self.cv_fn(self.engine.get_coords(handle)), dtype=float))
         return self._to_scaled(raw)
 
-    def add_node(self, handle: Handle, parent: Optional[int]) -> Node:
-        node = Node(id=len(self.nodes), handle=handle, cv=self._cv(handle), parent=parent)
+    def add_node(self, handle: Handle, parent: Optional[int], cv: Optional[np.ndarray] = None) -> Node:
+        node = Node(id=len(self.nodes), handle=handle, cv=self._cv(handle) if cv is None else cv, parent=parent)
         self.nodes.append(node)
         return node
 
@@ -184,7 +184,7 @@ class RRT:
         return self.nodes[int(d.argmin())]
 
     # -- expansion -----------------------------------------------------------
-    def extend(self, node: Node, q_rand: np.ndarray) -> Node:
+    def extend(self, node: Node, q_rand: np.ndarray) -> Optional[Node]:
         """Grow one new node from ``node`` toward ``q_rand`` via a swarm + runner.
 
         A swarm trial whose CV comes back non-finite (NaN/Inf -- e.g. an
@@ -195,6 +195,17 @@ class RRT:
         increments ``self.n_diverged``, which :meth:`build` copies onto the
         ``RRTResult`` it returns. If *every* trial in a swarm diverges there
         is nothing valid to extend from, and this raises ``RuntimeError``.
+
+        The ``tau2`` runner segment -- built from the one already-finite
+        chosen sampler -- is checked the same way, but there is no fallback
+        candidate for it the way there is for the swarm: if its CV comes back
+        non-finite, its handle is released, ``self.n_diverged`` is
+        incremented, and this returns ``None`` instead of a ``Node`` (no node
+        is added). Callers (:meth:`build`, :func:`rrt_connect`) treat a
+        ``None`` return as a used iteration that made no progress, not a
+        fatal error -- unlike the fully-diverged-swarm case above, a single
+        bad runner segment does not indicate a systemic problem worth
+        aborting the whole search over.
         """
         q_rand = np.asarray(q_rand, dtype=float)
         seg_seeds = [self._seed() for _ in range(self.n_expand)]
@@ -243,7 +254,14 @@ class RRT:
         )
         if runner is not chosen:
             self.engine.release(chosen)
-        return self.add_node(runner, node.id)
+
+        runner_cv = self._cv(runner)
+        if not np.all(np.isfinite(runner_cv)):
+            self.n_diverged += 1
+            self.engine.release(runner)
+            return None
+
+        return self.add_node(runner, node.id, cv=runner_cv)
 
     def path_to(self, node: Node) -> List[Node]:
         chain: List[Node] = []
@@ -294,6 +312,10 @@ class RRT:
 
             q = self.sample_target(goal)
             new = self.extend(self.nearest(q), q)
+            if new is None:
+                # The tau2 runner diverged (see extend()); nothing was added.
+                # Treat this as a used, unproductive iteration and retry.
+                continue
 
             if goal_test is not None:
                 success = bool(goal_test(new.handle))
@@ -502,6 +524,11 @@ def rrt_connect(
         if not a_capped:
             q = a.sample_target(None)
             a_new = a.extend(a.nearest(q), q)
+            if a_new is None:
+                # `a`'s tau2 runner diverged (see RRT.extend()); nothing was
+                # added on either side this round -- treat it as a used,
+                # unproductive iteration and retry.
+                continue
         else:
             # `a` cannot grow further; still offer its existing nearest node
             # to the connect test so a still-growing `b` can finish the join.
@@ -511,6 +538,8 @@ def rrt_connect(
         # connection against its existing nearest node.
         if not b_capped:
             b_node = b.extend(b.nearest(a_new.cv), a_new.cv)
+            if b_node is None:
+                continue
         else:
             b_node = b.nearest(a_new.cv)
 
