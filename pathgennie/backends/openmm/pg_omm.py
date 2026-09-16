@@ -38,7 +38,12 @@ from openmm.app import Simulation
 
 from pathgennie.core.driver import PathGennieDriver
 from pathgennie.core.parallel import SerialExecutor, ThreadDevicePool
-from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
+from pathgennie.core.progress import (
+    DEFAULT_ESCAPE_METRIC,
+    EscapeMetric,
+    ProgressVariable,
+    TargetMetric,
+)
 
 from .engine import OpenMMEngine, resolve_worker_count
 
@@ -65,11 +70,17 @@ class PathGennieMD:
         save_subframes: bool = False,
         subframe_stride: int = 1,
         checkpoint_freq: int = 0,
+        progress: Optional[ProgressVariable] = None,
     ):
-        if mode not in ("escape", "target"):
-            raise ValueError("mode must be 'escape' or 'target'")
-        if mode == "target" and target_projection is None:
-            raise ValueError("target_projection required for target mode")
+        # `progress`, when given, entirely replaces the escape/target metric
+        # this class would otherwise build in run() (see there), so the
+        # mode/target_projection validation below -- which only concerns that
+        # internal construction -- does not apply.
+        if progress is None:
+            if mode not in ("escape", "target"):
+                raise ValueError("mode must be 'escape' or 'target'")
+            if mode == "target" and target_projection is None:
+                raise ValueError("target_projection required for target mode")
         if convergence_fn is None:
             raise ValueError("convergence_fn is required")
 
@@ -90,6 +101,7 @@ class PathGennieMD:
         self.save_subframes = bool(save_subframes)
         self.subframe_stride = max(1, int(subframe_stride))
         self.checkpoint_freq = max(0, int(checkpoint_freq))
+        self.progress = progress
 
     def run(
         self,
@@ -116,17 +128,23 @@ class PathGennieMD:
         )
         self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)
-        start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
 
-        if self.mode == "escape":
-            progress = EscapeMetric(
-                self.proj_fn, start_cv, projection_args=self.proj_args,
-                escape_metric=self.escape_metric,
-                periodic=self.periodic,
-            )
+        if self.progress is not None:
+            # Caller-supplied ProgressVariable: use it as-is, bypassing the
+            # built-in escape/target metrics (and the start_cv computation
+            # that only they need) entirely.
+            progress = self.progress
         else:
-            progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args,
-                                    periodic=self.periodic)
+            start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
+            if self.mode == "escape":
+                progress = EscapeMetric(
+                    self.proj_fn, start_cv, projection_args=self.proj_args,
+                    escape_metric=self.escape_metric,
+                    periodic=self.periodic,
+                )
+            else:
+                progress = TargetMetric(self.proj_fn, self.target, projection_args=self.proj_args,
+                                        periodic=self.periodic)
 
         converge_fn = self.converge_fn
         converge_args = self.converge_args
