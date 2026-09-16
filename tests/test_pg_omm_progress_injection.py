@@ -77,16 +77,15 @@ def test_custom_progress_is_used_instead_of_builtin_metrics():
     assert progress.metric_calls > 0
 
 
-def test_custom_progress_bypasses_mode_and_target_validation():
+def test_progress_with_default_mode_args_works_standalone():
+    """`progress` alone, with every mode/target_projection/escape_metric/periodic
+    argument left at its default, must not raise and must drive the run (this is
+    the intended, non-conflicting way to use `progress`)."""
     sim, n = _build_simulation()
     progress = RecordingProgress()
-    # mode="target" with no target_projection would normally raise ValueError
-    # in __init__; supplying `progress` must make that validation a no-op.
     runner = PathGennieMD(
         simulation=sim,
         projection_fn=lambda c: np.array([c[0, 0]]),
-        mode="target",
-        target_projection=None,
         convergence_fn=lambda c, **k: False,
         temperature=300.0, seed=1,
         progress=progress,
@@ -96,6 +95,34 @@ def test_custom_progress_bypasses_mode_and_target_validation():
         _positions(n), tau1=2, tau2=2, max_trial=3, max_cycle=2, save_freq=1, verbosity=0,
     )
     assert traj.shape[0] >= 1
+
+
+@pytest.mark.parametrize(
+    "conflicting_kwargs",
+    [
+        pytest.param({"mode": "target", "target_projection": None}, id="non-default-mode"),
+        pytest.param({"target_projection": np.array([1.0])}, id="target_projection"),
+        pytest.param({"escape_metric": "cv0"}, id="escape_metric"),
+        pytest.param({"periodic": [360.0]}, id="periodic"),
+    ],
+)
+def test_progress_with_conflicting_builtin_args_raises(conflicting_kwargs):
+    """`progress` is supposed to entirely replace the built-in escape/target
+    metric; a caller who also passes a non-default mode/target_projection/
+    escape_metric/periodic (e.g. leftover kwargs from migrating off the
+    built-in metric) gets a loud ValueError instead of having that argument
+    silently discarded -- this used to bypass validation instead (I3)."""
+    sim, n = _build_simulation()
+    progress = RecordingProgress()
+    with pytest.raises(ValueError):
+        PathGennieMD(
+            simulation=sim,
+            projection_fn=lambda c: np.array([c[0, 0]]),
+            convergence_fn=lambda c, **k: False,
+            temperature=300.0, seed=1,
+            progress=progress,
+            **conflicting_kwargs,
+        )
 
 
 def test_mode_still_validated_without_progress():

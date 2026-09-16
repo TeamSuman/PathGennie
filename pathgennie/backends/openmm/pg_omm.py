@@ -72,11 +72,32 @@ class PathGennieMD:
         checkpoint_freq: int = 0,
         progress: Optional[ProgressVariable] = None,
     ):
-        # `progress`, when given, entirely replaces the escape/target metric
-        # this class would otherwise build in run() (see there), so the
-        # mode/target_projection validation below -- which only concerns that
-        # internal construction -- does not apply.
-        if progress is None:
+        if progress is not None:
+            # `progress` entirely replaces the escape/target metric this class
+            # would otherwise build in run() from mode/target_projection/
+            # escape_metric/periodic (see there), so a non-default value for
+            # any of them is a caller mistake -- most plausibly leftover
+            # kwargs from migrating off the built-in metric -- rather than
+            # something safe to silently discard. Fail loudly instead.
+            conflicts = []
+            if mode != "escape":
+                conflicts.append(f"mode={mode!r}")
+            if target_projection is not None:
+                conflicts.append(f"target_projection={target_projection!r}")
+            if escape_metric != DEFAULT_ESCAPE_METRIC:
+                conflicts.append(f"escape_metric={escape_metric!r}")
+            if periodic is not None:
+                conflicts.append(f"periodic={periodic!r}")
+            if conflicts:
+                raise ValueError(
+                    "PathGennieMD(progress=...) makes the built-in escape/target metric "
+                    "-- and therefore mode/target_projection/escape_metric/periodic -- "
+                    "irrelevant, but got non-default argument(s) that would otherwise be "
+                    f"silently ignored: {', '.join(conflicts)}. Leave mode/target_projection/"
+                    f"escape_metric/periodic at their defaults ('escape', None, "
+                    f"{DEFAULT_ESCAPE_METRIC!r}, None) when passing `progress`."
+                )
+        else:
             if mode not in ("escape", "target"):
                 raise ValueError("mode must be 'escape' or 'target'")
             if mode == "target" and target_projection is None:
