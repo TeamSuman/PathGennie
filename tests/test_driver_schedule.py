@@ -20,6 +20,12 @@ class RecordingEngine:
         self.next_id = 1
         self.sampler_calls: list[int] = []
         self.runner_calls: list[int] = []
+        # Segment lengths passed with save_subframes=True -- i.e. the
+        # subframe-replay calls driver.py makes to recapture a committed
+        # segment for save_subframe_block -- tracked separately from the
+        # ordinary swarm/runner calls above (I2).
+        self.replay_sampler_calls: list[int] = []
+        self.replay_runner_calls: list[int] = []
 
     def _new(self, pos):
         h = self.next_id
@@ -39,11 +45,19 @@ class RecordingEngine:
                      save_subframes=False, subframe_stride=1):
         pos = self.state[handle].copy()
         if randomize_velocities:
-            self.sampler_calls.append(int(n_steps))
+            (self.replay_sampler_calls if save_subframes else self.sampler_calls).append(int(n_steps))
         else:
-            self.runner_calls.append(int(n_steps))
+            (self.replay_runner_calls if save_subframes else self.runner_calls).append(int(n_steps))
         pos[0, 0] += 0.1 + 0.001 * (seed % 7)
-        return self._new(pos)
+        new_handle = self._new(pos)
+        if save_subframes:
+            # A minimal (handle, subframes) pair -- content is unused by these
+            # tests, only the recorded n_steps above and the tuple shape
+            # (driver.py unpacks it) matter.
+            n_frames = max(1, int(n_steps) // max(1, int(subframe_stride)))
+            subframes = np.stack([pos.copy() for _ in range(n_frames)])
+            return new_handle, subframes
+        return new_handle
 
     def get_coords(self, handle):
         return self.state[handle]
@@ -109,6 +123,39 @@ def test_schedule_history_matches_cycles_and_drives_the_worker():
         idx_r += 1
     assert idx_s == len(engine.sampler_calls)
     assert idx_r == len(engine.runner_calls)
+
+
+def test_schedule_with_save_subframes_uses_scheduled_tau_in_replay():
+    """I2: schedule= combined with save_subframes=True must feed the *same*
+    per-cycle (tau1, tau2) into the subframe-replay segments as into the
+    ordinary swarm/runner segments, not the tau1/tau2 passed to run()."""
+    engine = RecordingEngine()
+    handle = engine.create_state([0.0, 0.0, 0.0])
+    progress = EscapeMetric(lambda c: np.array([float(c[0, 0])]),
+                             start_cv=np.array([0.0]), escape_metric="cv0")
+    driver = PathGennieDriver(engine, progress, lambda c: False,
+                               executor=SerialExecutor(), sigma=0.3, seed=0, verbosity=0,
+                               save_subframes=True, subframe_stride=1)
+
+    def schedule(cycle, anchor_cv):
+        return (2, 3, 3) if cycle % 2 == 0 else (4, 3, 5)
+
+    max_cycle = 4
+    driver.run(handle, tau1=999, tau2=999, max_trial=999, max_cycle=max_cycle,
+               save_freq=1, schedule=schedule)
+
+    assert len(driver.schedule_history) == max_cycle
+    expected_tau1 = [tau1 for tau1, _, _ in driver.schedule_history]
+    expected_tau2 = [tau2 for _, tau2, _ in driver.schedule_history]
+
+    # This fake engine's coordinates strictly increase every segment, so the
+    # committed anchor always changes and every cycle triggers a full
+    # tau1 + tau2 replay (see driver.py's `need_replay`/`new_anchor == tau2_handle`).
+    assert engine.replay_sampler_calls == expected_tau1
+    assert engine.replay_runner_calls == expected_tau2
+    # And never the tau1=999/tau2=999 passed to run().
+    assert 999 not in engine.replay_sampler_calls
+    assert 999 not in engine.replay_runner_calls
 
 
 def test_without_schedule_history_is_empty_and_behaviour_unchanged():
