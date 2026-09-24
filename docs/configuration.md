@@ -41,6 +41,7 @@ log:          { ... }            # optional: streaming cycles.csv / trials.csv
 | **`devices`** | list[int] | none | **v0.2.0** — GPU indices to spread the swarm across. |
 | **`workers_per_device`** | int | 1 | **v0.2.0** — concurrent segments per GPU (replaces `tau1_workers`). |
 | **`seed`** | int | none | **v0.2.0** — master RNG seed (selection + per-segment seeds). |
+| **`reproducible_md`** | bool | `true` if `seed` | OpenMM: also reproduce the Langevin noise, at the cost of a Context reinitialise per segment (~30× slower for segments of tens of steps). `false` seeds the driver only: selection and velocity draws are reproducible, the thermostat noise is not. |
 | **`profile`** | `discovery` \| `sampling` | none | **v0.2.0** — goal preset; fills defaults below explicit keys. |
 | `tau1_workers` | int | — | Legacy alias for `workers_per_device`. |
 | **`scheme`** | `parallel` \| `serial` | `parallel` | Trial scheme, see below. |

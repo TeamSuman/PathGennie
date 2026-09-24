@@ -66,6 +66,7 @@ class PathGennieMD:
         subframe_stride: int = 1,
         checkpoint_freq: int = 0,
         driver_options: Optional[Dict] = None,
+        reproducible_md: Optional[bool] = None,
     ):
         """``driver_options`` are passed on to :class:`PathGennieDriver` (trial
         scheme -- see :func:`pathgennie.core.driver.scheme_options` -- and
@@ -93,6 +94,10 @@ class PathGennieMD:
         self.device = device
         self.save_subframes = bool(save_subframes)
         self.driver_options = dict(driver_options or {})
+        # None -> reproducible exactly when seeded (previous behaviour). False with a
+        # seed: the driver (selection, velocity seeds) is seeded but the Langevin noise
+        # stream is not, which avoids a Context reinitialise per segment.
+        self.reproducible_md = (seed is not None) if reproducible_md is None else bool(reproducible_md)
         self.subframe_stride = max(1, int(subframe_stride))
         self.checkpoint_freq = max(0, int(checkpoint_freq))
 
@@ -117,7 +122,7 @@ class PathGennieMD:
             n_workers=n_workers, device=self.device, verbose=verbosity >= 1,
             # A seeded case wants reproducibility, which on a stochastic integrator
             # costs a Context reinitialise per segment. Unseeded runs skip it.
-            reproducible=self.seed is not None,
+            reproducible=self.reproducible_md,
         )
         self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)

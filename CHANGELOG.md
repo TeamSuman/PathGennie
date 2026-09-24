@@ -21,6 +21,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cycles.csv` (one row per cycle) and `trials.csv` (one row per evaluated trial,
   variable count per cycle) grow while the run proceeds; user observables add
   columns. Works for both schemes and all three backends.
+- **`pathgennie.reproducible_md`** (OpenMM). With `seed` set, the engine reinitialises
+  the Context before every segment so the Langevin noise is reproducible; for
+  segments of tens of steps that was measured ~30x slower. `reproducible_md: false`
+  keeps the seeded driver (selection, velocity seeds) without the reinitialise.
 
 ### Fixed
 - Subframe replay used the chosen trial's position among the *surviving* trials as

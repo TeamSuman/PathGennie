@@ -288,6 +288,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
         checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
+        reproducible_md=pg_cfg.get("reproducible_md"),
         driver_options=dict(
             **scheme_options(pg_cfg),
             cycle_logger=build_cycle_logger(

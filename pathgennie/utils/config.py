@@ -46,6 +46,9 @@ class PathGennieConfig(BaseModel):
     temperature: Optional[float] = Field(None, gt=0, description="Temperature in Kelvin")
     sigma: Optional[float] = Field(None, gt=0, description="Selection softness (>0)")
     seed: Optional[int] = Field(None, description="Master RNG seed for reproducibility")
+    reproducible_md: Optional[bool] = Field(
+        None, description="OpenMM: also make the Langevin noise reproducible (Context reinitialise per "
+                          "segment, slow). Default: true when seed is set. false = seed the driver only")
 
     # Trial scheme: N parallel samplers + softmax, or serial probing until accepted.
     scheme: Optional[Literal["parallel", "serial"]] = Field(
