@@ -47,6 +47,13 @@ class PathGennieConfig(BaseModel):
     sigma: Optional[float] = Field(None, gt=0, description="Selection softness (>0)")
     seed: Optional[int] = Field(None, description="Master RNG seed for reproducibility")
 
+    # Trial scheme: N parallel samplers + softmax, or serial probing until accepted.
+    scheme: Optional[Literal["parallel", "serial"]] = Field(
+        None, description="'parallel' (N samplers, softmax selection; default) or 'serial' "
+                          "(probe until one beats the record/anchor, PathGennie 0.0.0)"
+    )
+    serial: Optional["SerialSchemeConfig"] = Field(None, description="Options of the serial scheme")
+
     # Mode / metric configuration.
     target_projection: Optional[List[float]] = Field(None, description="Target CV for 'target' mode")
     escape_metric: Optional[Literal["cv0", "distance_from_start"]] = Field(
@@ -96,6 +103,35 @@ class PathGennieConfig(BaseModel):
     )
 
 
+class SerialSchemeConfig(BaseModel):
+    """``pathgennie.serial:`` -- options of the serial (probe-until-accepted) scheme."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    accept: Literal["record", "anchor"] = Field(
+        "record", description="Threshold: best committed metric so far (record) or current anchor metric")
+    max_try: int = Field(1000, gt=0, description="Probes per cycle before the cycle is censored")
+    batch_size: Union[int, Literal["auto"]] = Field(
+        "auto", description="Probes run concurrently; 'auto' = executor workers, 1 = strictly sequential")
+    on_max_try: Literal["best", "stay"] = Field(
+        "best", description="Censored cycle: commit the best probe, or keep the anchor")
+    min_gain: float = Field(0.0, ge=0, description="Accept only if metric > threshold + min_gain")
+
+
+class LogConfig(BaseModel):
+    """Top-level ``log:`` block -- streaming cycles.csv / trials.csv (see core/cyclelog.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    directory: str = Field(".", description="Relative to the run's output directory")
+    cycles: str = "cycles.csv"
+    trials: Union[str, Literal[False]] = Field("trials.csv", description="Per-trial log file; false to disable")
+    flush_every: int = Field(1, gt=0, description="Flush to disk every N cycles")
+    observables: Optional[Dict[str, Any]] = Field(
+        None, description="{module, function, ...args}: f(coords_A, **args) -> dict, logged per cycle")
+
+
 class AppConfig(BaseModel):
     """Top-level ``input.yaml`` schema.
 
@@ -116,10 +152,14 @@ class AppConfig(BaseModel):
     convergence: Optional[Dict[str, Any]] = None
     md: Optional[Dict[str, Any]] = None
     output: Optional[Dict[str, Any]] = None
+    log: Optional[LogConfig] = None
     workdir: Optional[str] = None
     scratch_root: Optional[str] = Field(
         None, description="Place per-segment scratch here (e.g. node-local $TMPDIR) instead of workdir/scratch"
     )
+
+
+PathGennieConfig.model_rebuild()
 
 
 def load_config(filepath: Path | str) -> AppConfig:

@@ -25,7 +25,8 @@ from typing import Any, Mapping
 import numpy as np
 
 from pathgennie.backends.amber.utils import read_native_trajectory
-from pathgennie.core.driver import PathGennieDriver
+from pathgennie.core.cyclelog import build_cycle_logger
+from pathgennie.core.driver import PathGennieDriver, scheme_options
 from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_device
 from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
 from pathgennie.core.strategy import resolve_profile
@@ -467,6 +468,11 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
         checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
+        **scheme_options(pg_cfg),
+        cycle_logger=build_cycle_logger(
+            cfg, output_dir, lambda m, f: load_function(case_dir, m, f),
+            append=is_resuming, enrich=lambda a: enrich_args(a, topology_info),
+        ),
     )
 
     downstream = pg_cfg.get("downstream")

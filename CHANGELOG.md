@@ -6,6 +6,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Serial trial scheme** (`pathgennie.scheme: serial`). The probe-until-accepted
+  cycle of the original PathGennie (0.0.0) is back as an option next to the default
+  parallel swarm: samplers are run from the anchor until one beats the record (best
+  committed metric so far; or the anchor with `serial.accept: anchor`), and that one
+  is committed. No softmax/`sigma`; the number of probes per cycle is logged as an
+  observable. `serial.max_try` censors a cycle (`on_max_try: best | stay`);
+  `serial.batch_size` runs probes concurrently with first-success-in-index-order
+  acceptance, which is statistically identical to a one-at-a-time loop, and derived
+  per-probe seeds make a seeded run independent of the batch size. Unlike 0.0.0, a
+  censored cycle is flagged, and probes that are not kept are released each batch.
+- **Streaming cycle/trial log** (top-level `log:` block, `core/cyclelog.py`):
+  `cycles.csv` (one row per cycle) and `trials.csv` (one row per evaluated trial,
+  variable count per cycle) grow while the run proceeds; user observables add
+  columns. Works for both schemes and all three backends.
+
+### Fixed
+- Subframe replay used the chosen trial's position among the *surviving* trials as
+  its seed index, so after a quarantined trial the replayed segment could be a
+  different trial's. Trials now carry their own seed index.
+
 ## [2.0.0] - 2026-08-02
 
 ### Added

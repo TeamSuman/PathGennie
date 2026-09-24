@@ -65,7 +65,11 @@ class PathGennieMD:
         save_subframes: bool = False,
         subframe_stride: int = 1,
         checkpoint_freq: int = 0,
+        driver_options: Optional[Dict] = None,
     ):
+        """``driver_options`` are passed on to :class:`PathGennieDriver` (trial
+        scheme -- see :func:`pathgennie.core.driver.scheme_options` -- and
+        ``cycle_logger``)."""
         if mode not in ("escape", "target"):
             raise ValueError("mode must be 'escape' or 'target'")
         if mode == "target" and target_projection is None:
@@ -88,6 +92,7 @@ class PathGennieMD:
         self.workers_per_device = workers_per_device
         self.device = device
         self.save_subframes = bool(save_subframes)
+        self.driver_options = dict(driver_options or {})
         self.subframe_stride = max(1, int(subframe_stride))
         self.checkpoint_freq = max(0, int(checkpoint_freq))
 
@@ -150,6 +155,7 @@ class PathGennieMD:
             save_subframes=self.save_subframes,
             subframe_stride=self.subframe_stride,
             checkpoint_freq=self.checkpoint_freq if checkpoint_freq is None else checkpoint_freq,
+            **self.driver_options,
         )
         return driver.run(
             initial_handle,
