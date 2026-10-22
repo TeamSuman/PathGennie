@@ -217,17 +217,27 @@ class CoreAmberEngine:
             except OSError:
                 pass
 
-    def create_handle(self, coords: np.ndarray) -> str:
+    def get_box(self, handle) -> "np.ndarray | None":
+        """Box of the frame (the rst7 box line) as ``(3, 3)`` rows in Å, or ``None``."""
+        from pathgennie.core.box import normalize_box
+        from .utils import read_rst7_box
+
+        return normalize_box(read_rst7_box(handle))
+
+    def create_handle(self, coords: np.ndarray, box: "np.ndarray | None" = None) -> str:
         """Write coordinates to a new rst7 file and return its path.
 
         The restart carries **no velocity block**; the next cycle's tau1 will
         randomize velocities anyway. ``run_segment`` detects this and generates
         velocities even when asked to continue them, because sander cannot
-        restart from a coordinates-only file.
+        restart from a coordinates-only file. ``box`` (``(3, 3)`` rows in Å)
+        is the frame's own box; without it the starting box is written, which is
+        wrong for a frame from a constant-pressure run.
         """
+        from pathgennie.core.box import lengths_angles
         from .utils import write_rst7_coords
 
         coords = np.asarray(coords, dtype=float).reshape(-1, 3)
         rst_path = self.scratch_dir / f"ckpt_{self._uid()}.rst7"
-        write_rst7_coords(rst_path, coords, box=self.box)
+        write_rst7_coords(rst_path, coords, box=lengths_angles(box) if box is not None else self.box)
         return str(rst_path)

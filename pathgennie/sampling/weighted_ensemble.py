@@ -25,6 +25,7 @@ from typing import Callable, List, Optional, Sequence
 
 import numpy as np
 
+from pathgennie.core.box import call_with_box, frame_coords
 from pathgennie.core.engine import Engine, Handle
 from pathgennie.core.parallel import ParallelExecutor, SerialExecutor
 
@@ -198,7 +199,7 @@ class WeightedEnsembleStage:
         return [create_state(frame) for frame in ensemble.frames]
 
     def _cv(self, engine: Engine, handle: Handle) -> float:
-        return float(self.cv_fn(engine.get_coords(handle)))
+        return float(call_with_box(self.cv_fn, frame_coords(engine, handle)))
 
     # -- main loop -----------------------------------------------------------
     def run(self, ensemble: PathEnsemble, engine: Engine, **_: object) -> SamplingResult:

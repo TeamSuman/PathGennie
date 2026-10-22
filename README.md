@@ -341,6 +341,23 @@ The file has four main parts:
   they are adjacent, which inflates the progress metric ~10× and rewards the sampler for
   crossing the cut instead of making real progress.
 * *Additional options*: Any extra keys defined in this block are passed dynamically as keyword arguments (`**kwargs`) to the projection function.
+* **Periodic box of each frame:** declare a parameter named `box` and the function receives
+  the box of the frame being scored, as a `(3, 3)` array of box-vector rows in Å
+  (`box.diagonal()` gives the edge lengths of an orthorhombic box), or nothing for a
+  non-periodic system. Under a barostat each trial has its own box, so minimum-image
+  distances, periodic cluster analysis and densities should use it rather than a fixed value.
+  All three backends supply it (OpenMM State box vectors, the `.gro` box line, the `rst7` box
+  line). Functions without a `box` parameter are called exactly as before (`**kwargs` alone
+  does not opt in). A `box` key in this block acts as a fallback for frames without one.
+  The same applies to the convergence function. Each saved frame's box is stored in the
+  HDF5 output (`box`, aligned with `trajectory`), and checkpoints keep the anchor's box, so a
+  constant-pressure run resumes in its own box rather than the starting one.
+
+  ```python
+  def ice_cluster_cv(coords, box=None, cutoff=3.5):
+      L = box.diagonal()                       # this frame's box, Å
+      ...
+  ```
 
 #### 6. Convergence (`convergence`)
 * `module` (str): Case-local Python filename (without `.py`) containing the convergence check function.

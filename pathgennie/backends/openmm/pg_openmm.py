@@ -30,10 +30,12 @@ from openmm.app import PME, AmberInpcrdFile, AmberPrmtopFile, HBonds, Simulation
 
 from pathgennie.core.cyclelog import build_cycle_logger
 from pathgennie.core.driver import scheme_options
+from pathgennie.core.box import FrameCoords, call_with_box
 from pathgennie.backends.amber.utils import (
     enrich_args,
     load_function,
     parse_prmtop,
+    read_rst7_box,
     read_rst7_coords,
     resolve_case_path,
     wrap_frames_pbc,
@@ -41,6 +43,7 @@ from pathgennie.backends.amber.utils import (
     write_trajectory,
 )
 from pathgennie.backends.gromacs.utils import (
+    read_gro_box,
     read_gro_coords,
     read_masses_from_topology,
     read_topology_info,
@@ -157,11 +160,11 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     convergence_args = enrich_args(convergence_args, topology_info)
 
     if topology.suffix in {".top", ".itp"} or initial_restart.suffix == ".gro":
-        initial_coords = read_gro_coords(initial_restart)
+        initial_coords = FrameCoords(read_gro_coords(initial_restart), read_gro_box(initial_restart))
     else:
-        initial_coords = read_rst7_coords(initial_restart)
+        initial_coords = FrameCoords(read_rst7_coords(initial_restart), read_rst7_box(initial_restart))
 
-    initial_cv = proj_fn(initial_coords, **projection_args)
+    initial_cv = call_with_box(proj_fn, initial_coords, **projection_args)
     print(f"Initial CV: {initial_cv}")
 
     mode = pg_cfg.get("mode", "target")
@@ -242,8 +245,11 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     
     if equilibration_steps > 0:
         # Re-evaluate the CV after equilibration
-        pos_array = simulation.context.getState(getPositions=True).getPositions(asNumpy=True).value_in_unit(unit.angstrom)
-        eq_cv = proj_fn(pos_array, **projection_args)
+        eq_state = simulation.context.getState(getPositions=True)
+        pos_array = eq_state.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+        eq_box = (eq_state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(unit.angstrom)
+                  if simulation.system.usesPeriodicBoundaryConditions() else None)
+        eq_cv = call_with_box(proj_fn, FrameCoords(pos_array, eq_box), **projection_args)
         print(f"Equilibrated CV: {eq_cv}")
 
     trajectory_path = output_dir / cfg.get("output", {}).get("trajectory", "reactive_path.dcd")

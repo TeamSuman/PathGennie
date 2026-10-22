@@ -25,6 +25,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from pathgennie.backends.amber.utils import read_native_trajectory
+from pathgennie.core.box import FrameCoords, call_with_box
 from pathgennie.core.cyclelog import build_cycle_logger
 from pathgennie.core.driver import PathGennieDriver, scheme_options
 from pathgennie.core.parallel import ThreadDevicePool, resolve_cuda_visible_device
@@ -36,6 +37,7 @@ from pathgennie.utils.scratch import resolve_scratch_dir
 from .utils import (
     enrich_args,
     load_function,
+    read_gro_box,
     read_gro_coords,
     read_masses_from_topology,
     read_topology_info,
@@ -270,12 +272,16 @@ class CoreGromacsEngine:
             except OSError:
                 pass
 
-    def create_handle(self, coords: np.ndarray) -> str:
-        """Write coordinates to a new .gro file and return its path."""
+    def get_box(self, handle: str) -> "np.ndarray | None":
+        """Box of the frame (the .gro box line) as ``(3, 3)`` rows in Å."""
+        return read_gro_box(handle)
+
+    def create_handle(self, coords: np.ndarray, box: "np.ndarray | None" = None) -> str:
+        """Write coordinates (and the frame's box, if given) to a new .gro file and return its path."""
         if self.template_gro is None:
             raise RuntimeError("Cannot create handle from coords: no template_gro set on CoreGromacsEngine")
         gro_path = self.scratch_dir / f"ckpt_{self._uid()}.gro"
-        write_gro_coords(self.template_gro, gro_path, coords)
+        write_gro_coords(self.template_gro, gro_path, coords, box=box)
         return str(gro_path)
 
 
@@ -394,7 +400,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     projection_args = enrich_args(projection_args, topology_info)
     convergence_args = enrich_args(convergence_args, topology_info)
 
-    start_cv = np.asarray(proj_fn(read_gro_coords(initial_structure), **projection_args), dtype=float)
+    start_coords = FrameCoords(read_gro_coords(initial_structure), read_gro_box(initial_structure))
+    start_cv = np.asarray(call_with_box(proj_fn, start_coords, **projection_args), dtype=float)
     print(f"Initial CV: {start_cv}")
 
     # Optional per-component CV periods (e.g. [360.0, 360.0] for dihedrals in
@@ -416,7 +423,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         )
 
     def convergence(coords: np.ndarray) -> bool:
-        return bool(conv_fn(coords, **convergence_args))
+        return bool(call_with_box(conv_fn, coords, **convergence_args))
 
     engine = CoreGromacsEngine(
         topology=topology,

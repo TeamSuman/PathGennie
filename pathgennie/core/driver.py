@@ -54,6 +54,7 @@ from typing import Callable, List, Optional
 
 import numpy as np
 
+from .box import FrameCoords, call_with_box, create_handle, frame_coords
 from .engine import Engine, Handle
 from .parallel import ParallelExecutor, SerialExecutor
 from .progress import ProgressVariable
@@ -203,10 +204,12 @@ class PathGennieDriver:
             if ckpt is not None:
                 start_cycle = ckpt["cycle"] + 1
                 self.rng.bit_generator.state = ckpt["rng_state"]
-                anchor_coords = ckpt["anchor_coords"]
+                # The anchor's own box (None for checkpoints written before boxes
+                # were stored): under a barostat the starting box would be wrong.
+                anchor_coords = FrameCoords(ckpt["anchor_coords"], ckpt.get("anchor_box"))
                 anchor_cv = ckpt["anchor_cv"]
                 anchor_metric = float(ckpt["anchor_metric"])
-                anchor = self.engine.create_handle(anchor_coords)
+                anchor = create_handle(self.engine, anchor_coords)
                 if len(ckpt["trajectory"]) > 0:
                     trajectory = list(ckpt["trajectory"])
                 if len(ckpt["metric_history"]) > 0:
@@ -215,22 +218,30 @@ class PathGennieDriver:
                     print(f"Resuming from checkpoint at cycle {start_cycle} (loaded {len(trajectory)} frames)")
             else:
                 anchor = initial_handle
-                anchor_coords = self.engine.get_coords(anchor)
+                anchor_coords = frame_coords(self.engine, anchor)
                 anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
             storage = HDF5Storage(checkpoint_path)
         else:
             anchor = initial_handle
-            anchor_coords = self.engine.get_coords(anchor)
+            anchor_coords = frame_coords(self.engine, anchor)
             anchor_cv, anchor_metric = self._evaluate(anchor_coords, cycle=0)
             storage = None
+
+        # A per-frame "box" dataset, aligned with "trajectory", when the engine
+        # reports a box. Subframes have no box of their own; they get NaN rows so
+        # the two datasets stay aligned.
+        store_box = getattr(anchor_coords, "box", None) is not None
 
         def save_frame(coords: np.ndarray, handle: Handle, metric_val: float) -> None:
             trajectory.append(coords.copy())
             if collect_seeds:
                 seed_handles.append(self.engine.clone_anchor(handle))
             if storage is not None:
-                storage.append("trajectory", coords)
+                storage.append("trajectory", np.asarray(coords))
                 storage.append("metric", np.array([metric_val]))
+                if store_box:
+                    box = getattr(coords, "box", None)
+                    storage.append("box", np.full((3, 3), np.nan) if box is None else box)
 
         def save_subframe_block(frames: np.ndarray, metric_val: float) -> None:
             for frame in np.asarray(frames):
@@ -240,6 +251,8 @@ class PathGennieDriver:
                 if storage is not None:
                     storage.append("trajectory", frame)
                     storage.append("metric", np.array([metric_val]))
+                    if store_box:
+                        storage.append("box", np.full((3, 3), np.nan))
 
         cycle_seeds: List[int] = []
 
@@ -258,7 +271,7 @@ class PathGennieDriver:
                     handle, tau1, randomize_velocities=True,
                     seed=cycle_seeds[trial_index], device=device,
                 )
-                coords = self.engine.get_coords(seg)
+                coords = frame_coords(self.engine, seg)
                 cv, metric = self._evaluate(coords, cycle=cycle)
             except Exception as exc:  # noqa: BLE001 - one trial, not the run
                 for stray in (seg, handle):
@@ -424,7 +437,7 @@ class PathGennieDriver:
                         chosen.handle, tau2, randomize_velocities=False,
                         seed=tau2_seed, device=tau2_device,
                     )
-                    tau2_coords = self.engine.get_coords(tau2_handle)
+                    tau2_coords = frame_coords(self.engine, tau2_handle)
                     tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
                     tau2_failed = False
                 except Exception as exc:  # noqa: BLE001 - one runner, not the run
@@ -556,13 +569,14 @@ class PathGennieDriver:
                 storage.save_checkpoint(
                     cycle=cycle,
                     rng_state=self.rng.bit_generator.state,
-                    anchor_coords=anchor_coords,
+                    anchor_coords=np.asarray(anchor_coords),
+                    anchor_box=getattr(anchor_coords, "box", None),
                     anchor_cv=anchor_cv,
                     anchor_metric=anchor_metric,
                     metric_history=metric_history,
                 )
 
-            if self.convergence_fn(coords):
+            if call_with_box(self.convergence_fn, coords):
                 converged_at = cycle
                 if last_saved_cycle != cycle:  # always keep the converged frame
                     save_frame(coords, anchor, metric)

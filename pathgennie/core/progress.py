@@ -20,6 +20,8 @@ from typing import Callable, Optional, Protocol, Sequence
 
 import numpy as np
 
+from .box import call_with_box
+
 __all__ = [
     "ProgressVariable",
     "EscapeMetric",
@@ -52,7 +54,10 @@ class ProgressVariable(Protocol):
 
 
 class CallableProjection:
-    """Adapt a plain ``projection_fn(coords, **kwargs)`` to ``project``."""
+    """Adapt a plain ``projection_fn(coords, **kwargs)`` to ``project``.
+
+    ``cycle`` and ``box`` are passed only if the function declares them; ``box``
+    comes from the frame (``coords.box``, see :mod:`pathgennie.core.box`)."""
 
     def __init__(self, projection_fn: Callable[..., np.ndarray], projection_args: Optional[dict] = None):
         self._fn = projection_fn
@@ -65,7 +70,7 @@ class CallableProjection:
             sig = inspect.signature(self._fn)
             if 'cycle' in sig.parameters:
                 kwargs['cycle'] = cycle
-        return np.asarray(self._fn(coords, **kwargs), dtype=float)
+        return np.asarray(call_with_box(self._fn, coords, **kwargs), dtype=float)
 
 
 def periodic_delta(

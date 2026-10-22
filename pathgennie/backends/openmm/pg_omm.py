@@ -37,6 +37,7 @@ except ImportError as _exc:  # pragma: no cover - exercised via the guard test
 from openmm.app import Simulation
 
 from pathgennie.core.driver import PathGennieDriver
+from pathgennie.core.box import call_with_box, frame_coords
 from pathgennie.core.parallel import SerialExecutor, ThreadDevicePool
 from pathgennie.core.progress import DEFAULT_ESCAPE_METRIC, EscapeMetric, TargetMetric
 
@@ -131,7 +132,7 @@ class PathGennieMD:
         )
         self.engine = engine  # exposed so a downstream stage can reuse it
         initial_handle = engine.create_state(initial_pos)
-        start_cv = np.asarray(self.proj_fn(engine.get_coords(initial_handle), **self.proj_args))
+        start_cv = np.asarray(call_with_box(self.proj_fn, frame_coords(engine, initial_handle), **self.proj_args))
 
         if self.mode == "escape":
             progress = EscapeMetric(
@@ -147,7 +148,7 @@ class PathGennieMD:
         converge_args = self.converge_args
 
         def convergence(coords: np.ndarray) -> bool:
-            return bool(converge_fn(coords, **converge_args))
+            return bool(call_with_box(converge_fn, coords, **converge_args))
 
         # Several walkers per card: a thread pool with one slot per Context runs
         # segments concurrently; with several devices, trial i goes to

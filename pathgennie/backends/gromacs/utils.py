@@ -122,8 +122,48 @@ def read_gro_coords(path: str | Path) -> np.ndarray:
     return np.asarray(coords, dtype=float)
 
 
-def write_gro_coords(template_gro: str | Path, out_gro: str | Path, coords: np.ndarray) -> None:
-    """Write a new .gro file using header/atom info from template_gro and updated coordinates (Ångström)."""
+def _gro_box_from_values(values: list[float]) -> "np.ndarray | None":
+    """Box vectors (rows, Å) from a .gro box line: 3 values (rectangular) or 9
+    (triclinic: v1x v2y v3z v1y v1z v2x v2z v3x v3y), in nm."""
+    if len(values) >= 9:
+        v1x, v2y, v3z, v1y, v1z, v2x, v2z, v3x, v3y = values[:9]
+        box = np.array([[v1x, v1y, v1z], [v2x, v2y, v2z], [v3x, v3y, v3z]], dtype=float)
+    elif len(values) >= 3:
+        box = np.diag(np.asarray(values[:3], dtype=float))
+    else:
+        return None
+    return box * 10.0
+
+
+def read_gro_box(path: str | Path) -> "np.ndarray | None":
+    """Box of a .gro file as a ``(3, 3)`` array of row vectors in Å, or ``None``."""
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    if len(lines) < 3:
+        return None
+    natom = int(lines[1].strip())
+    if len(lines) <= 2 + natom:
+        return None
+    try:
+        return _gro_box_from_values([float(v) for v in lines[2 + natom].split()])
+    except ValueError:
+        return None
+
+
+def _gro_box_line(box) -> str:
+    """Format a box (``(3, 3)`` rows in Å) as a .gro box line (nm)."""
+    b = np.asarray(box, dtype=float).reshape(3, 3) / 10.0
+    vals = [b[0, 0], b[1, 1], b[2, 2]]
+    off = [b[0, 1], b[0, 2], b[1, 0], b[1, 2], b[2, 0], b[2, 1]]
+    if any(abs(v) > 1e-9 for v in off):
+        vals += off
+    return "".join(f"{v:10.5f}" for v in vals)
+
+
+def write_gro_coords(template_gro: str | Path, out_gro: str | Path, coords: np.ndarray, box=None) -> None:
+    """Write a new .gro file using header/atom info from template_gro and updated coordinates (Ångström).
+
+    ``box`` (``(3, 3)`` rows in Å) replaces the template's box line; without it the
+    template's box is kept, which is wrong for a frame from a constant-pressure run."""
     template_path = Path(template_gro)
     lines = template_path.read_text(encoding="utf-8").splitlines()
     if len(lines) < 3:
@@ -143,8 +183,10 @@ def write_gro_coords(template_gro: str | Path, out_gro: str | Path, coords: np.n
         pos_str = f"{x_nm:8.3f}{y_nm:8.3f}{z_nm:8.3f}"
         out_lines.append(f"{prefix}{pos_str}{suffix}")
 
-    # Append box line if present
-    if len(lines) > 2 + natom:
+    # Box line: the frame's own box if given, else the template's (if present)
+    if box is not None:
+        out_lines.append(_gro_box_line(box))
+    elif len(lines) > 2 + natom:
         out_lines.extend(lines[2 + natom :])
 
     Path(out_gro).write_text("\n".join(out_lines) + "\n", encoding="utf-8")

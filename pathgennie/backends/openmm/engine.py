@@ -76,7 +76,7 @@ except ImportError as _exc:  # pragma: no cover - exercised via the guard test
         f"Underlying import error: {_exc}"
     ) from _exc
 # ---------------------------------------------------------------------------
-from openmm import Context, State, XmlSerializer, unit
+from openmm import Context, State, Vec3, XmlSerializer, unit
 from openmm.app import Simulation
 
 from pathgennie.core.engine import Handle
@@ -379,19 +379,35 @@ class OpenMMEngine:
             raise ValueError("OpenMM segment produced non-finite coordinates (unstable dynamics?)")
         return coords
 
+    def get_box(self, handle: Handle) -> Optional[np.ndarray]:
+        """Box vectors of ``handle`` as a ``(3, 3)`` array of rows in Å, or ``None``
+        for a non-periodic System. Under a barostat each State has its own box."""
+        if not self.sim.system.usesPeriodicBoundaryConditions():
+            return None
+        assert isinstance(handle, int)
+        with self._lock:
+            state = self._cache[handle]
+        vecs = state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(unit.nanometer)  # type: ignore
+        return np.asarray(vecs, dtype=float) * NM_TO_ANG
+
     def release(self, handle: Handle) -> None:
         assert isinstance(handle, int)
         with self._lock:
             self._cache.pop(handle, None)
 
-    def create_handle(self, coords: np.ndarray) -> int:
+    def create_handle(self, coords: np.ndarray, box: Optional[np.ndarray] = None) -> int:
         """Re-create a handle from an ``(n_atoms, 3)`` coordinate array (Å).
 
         Used by checkpoint restart. Uses the primary context to build a State
-        with fresh Maxwell–Boltzmann velocities.
+        with fresh Maxwell–Boltzmann velocities. ``box`` (``(3, 3)`` rows in Å)
+        restores the frame's own box; without it the State keeps whatever box the
+        primary context has (the starting box), which is wrong under a barostat.
         """
         positions = (np.asarray(coords, dtype=float) / NM_TO_ANG) * unit.nanometers
         ctx = self.sim.context
+        if box is not None:
+            b = np.asarray(box, dtype=float).reshape(3, 3) / NM_TO_ANG
+            ctx.setPeriodicBoxVectors(*[Vec3(*row) * unit.nanometer for row in b])
         ctx.setPositions(positions)
         ctx.setVelocitiesToTemperature(self.temperature)
         return self._store(ctx.getState(getPositions=True, getVelocities=True))
