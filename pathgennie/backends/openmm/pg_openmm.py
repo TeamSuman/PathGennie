@@ -28,6 +28,8 @@ except ImportError as _exc:  # pragma: no cover - exercised via the guard test
 from openmm import LangevinMiddleIntegrator, Platform, unit
 from openmm.app import PME, AmberInpcrdFile, AmberPrmtopFile, HBonds, Simulation
 
+from pathgennie.core.cyclelog import build_cycle_logger
+from pathgennie.core.driver import scheme_options
 from pathgennie.backends.amber.utils import (
     enrich_args,
     load_function,
@@ -286,6 +288,14 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
         checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
+        reproducible_md=pg_cfg.get("reproducible_md"),
+        driver_options=dict(
+            **scheme_options(pg_cfg),
+            cycle_logger=build_cycle_logger(
+                cfg, output_dir, lambda m, f: load_function(case_dir, m, f),
+                append=is_resuming, enrich=lambda a: enrich_args(a, topology_info),
+            ),
+        ),
     )
     downstream = pg_cfg.get("downstream")
     result = runner.run(

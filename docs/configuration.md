@@ -19,6 +19,7 @@ projection:   { ... }            # coords -> CV
 convergence:  { ... }            # when to stop
 md:           { ... }            # optional: MD control overrides
 output:       { ... }            # optional: output file names
+log:          { ... }            # optional: streaming cycles.csv / trials.csv
 ```
 
 ## `pathgennie` block
@@ -40,8 +41,41 @@ output:       { ... }            # optional: output file names
 | **`devices`** | list[int] | none | **v0.2.0** — GPU indices to spread the swarm across. |
 | **`workers_per_device`** | int | 1 | **v0.2.0** — concurrent segments per GPU (replaces `tau1_workers`). |
 | **`seed`** | int | none | **v0.2.0** — master RNG seed (selection + per-segment seeds). |
+| **`reproducible_md`** | bool | `true` if `seed` | OpenMM: also reproduce the Langevin noise, at the cost of a Context reinitialise per segment (~30× slower for segments of tens of steps). `false` seeds the driver only: selection and velocity draws are reproducible, the thermostat noise is not. |
 | **`profile`** | `discovery` \| `sampling` | none | **v0.2.0** — goal preset; fills defaults below explicit keys. |
 | `tau1_workers` | int | — | Legacy alias for `workers_per_device`. |
+| **`scheme`** | `parallel` \| `serial` | `parallel` | Trial scheme, see below. |
+| **`serial`** | mapping | — | Options of the serial scheme, see below. |
+
+### Trial scheme: `parallel` or `serial`
+
+`parallel` (the default, unchanged) runs `max_trial` samplers per cycle and draws
+one by softmax over their metrics (`sigma`).
+
+`serial` is the probe-until-accepted scheme of the original PathGennie (0.0.0):
+samplers of `tau1_steps` are started from the anchor one after another, each with
+fresh velocities, until one beats the acceptance threshold; that sampler is
+extended by `tau2_steps` and committed. There is no softmax, so `sigma` and
+`max_trial` are not used. The number of probes a cycle needs is geometric in the
+per-probe success probability, which makes it an observable of the landscape
+(logged as `n_trials` in `cycles.csv`).
+
+```yaml
+pathgennie:
+  scheme: serial
+  serial:
+    accept: record      # record: beat the best committed metric so far (0.0.0) | anchor: beat the current anchor
+    max_try: 1000       # probes before the cycle is censored
+    batch_size: auto    # probes run concurrently (auto = executor workers; 1 = strictly one at a time)
+    on_max_try: best    # censored cycle: commit the best probe | stay: keep the anchor
+    min_gain: 0.0       # accept only if metric > threshold + min_gain
+```
+
+Probes from one anchor are independent, so running `batch_size` of them at once
+and accepting the *first success in index order* has the same statistics as a
+one-at-a-time loop; probes after the accepted one are wasted compute but are
+logged (`after_accept`). Per-probe seeds are derived from one master draw per
+cycle, so for a seeded run `batch_size` changes the speed, not the result.
 
 ### Multi-GPU example
 
@@ -150,6 +184,34 @@ md:
   controls: { ntpr: 0 }     # merged over the backend defaults
   extra_text: ""            # appended verbatim to mdin (AMBER)
 ```
+
+## `log` block (optional)
+
+Streams two CSV files into the output directory while the run proceeds, for both
+trial schemes (absent block = no log, as before):
+
+```yaml
+log:
+  directory: .              # relative to the output directory
+  cycles: cycles.csv        # one row per cycle
+  trials: trials.csv        # one row per evaluated trial; false to disable
+  flush_every: 1            # flush to disk every N cycles
+  observables:              # optional: f(coords_A, **args) -> dict, evaluated on each committed frame
+    module: projection
+    function: log_observables
+    cutoff: 8.0             # extra keys are passed as arguments (topology-derived ones added as for projection)
+```
+
+`cycles.csv`: `cycle, scheme, n_trials, n_failed, threshold, anchor_metric,
+record, n_above_anchor, n_above_record, chosen_trial, chosen_metric,
+chosen_prob, tau2_metric, committed_metric, accepted, censored, wall_s`, then one
+column per observable key. `threshold` is empty for `parallel`, `chosen_prob`
+for `serial`; `chosen_trial + 1` is the number of probes a serial cycle needed.
+`trials.csv`: `cycle, trial, batch, metric, above_anchor, above_record, prob,
+chosen, after_accept` — `max_trial` rows per parallel cycle, a variable number
+per serial cycle. Observable keys that first appear after the header was written
+go to `cycles_extra.csv` (`cycle, key, value`). On a checkpoint resume the files
+are appended to.
 
 ## `output` block (optional)
 
