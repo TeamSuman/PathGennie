@@ -89,5 +89,21 @@ class Engine(Protocol):
         Used by checkpoint restart to re-create an anchor handle from the saved
         coordinates.  Velocities do not need to be restored because the next
         cycle always starts with ``randomize_velocities=True`` for τ1.
+
+        Engines of periodic systems should also accept ``box=`` (``(3, 3)`` rows
+        in Å) and restore it; see the optional methods below.
         """
         ...
+
+
+# Optional engine methods (not part of the runtime-checked protocol, so existing
+# engines remain valid; :mod:`pathgennie.core.box` uses them when present):
+#
+#   get_box(handle) -> (3, 3) array of box-vector rows in Å, or None
+#       The periodic box of the stored frame. Under a barostat each frame has
+#       its own box; projection/convergence functions that declare a ``box``
+#       parameter receive it.
+#
+#   create_handle(coords, box=None) -> Handle
+#       As above, restoring ``box`` for the new handle (checkpoint resume of a
+#       constant-pressure run would otherwise restart in the starting box).

@@ -146,6 +146,12 @@ class HDF5Storage:
         ]
         if payload.get("metric_history") is not None:
             datasets_to_save.append(("metric_history", np.asarray(payload["metric_history"])))
+        # The anchor's box (Å, rows = box vectors) so a resume restores it; a stale
+        # one from an earlier checkpoint must not survive a box-less write.
+        if payload.get("anchor_box") is not None:
+            datasets_to_save.append(("anchor_box", np.asarray(payload["anchor_box"], dtype=float)))
+        elif "anchor_box" in grp:
+            del grp["anchor_box"]
         for name, arr in datasets_to_save:
             if name in grp:
                 del grp[name]
@@ -162,6 +168,7 @@ class HDF5Storage:
         anchor_cv: np.ndarray,
         anchor_metric: float,
         metric_history: Optional[List[float] | np.ndarray] = None,
+        anchor_box: Optional[np.ndarray] = None,
     ) -> None:
         """Queue restart metadata behind pending writes, then wait for it to land.
 
@@ -187,6 +194,7 @@ class HDF5Storage:
             "anchor_cv": anchor_cv,
             "anchor_metric": anchor_metric,
             "metric_history": metric_history,
+            "anchor_box": anchor_box,
         }))
         self._drain()
 
@@ -206,7 +214,7 @@ class HDF5Storage:
                 if n is None:
                     return
                 n = int(n)
-                for name in ("trajectory", "metric"):
+                for name in ("trajectory", "metric", "box"):
                     if name in f and f[name].shape[0] > n:
                         f[name].resize(n, axis=0)
         except OSError:
@@ -219,7 +227,10 @@ class HDF5Storage:
         """Load the last saved checkpoint from *filepath*, or ``None``.
 
         Returns a dict with keys: ``cycle``, ``rng_state``, ``anchor_coords``,
-        ``anchor_cv``, ``anchor_metric``, ``trajectory``, ``metric_history``.
+        ``anchor_cv``, ``anchor_metric``, ``trajectory``, ``metric_history``,
+        ``anchor_box`` (``(3, 3)`` Å, or ``None`` if the run had no box or predates
+        box storage) and ``boxes`` (per-frame boxes aligned with ``trajectory``,
+        NaN rows for subframes, or ``None``).
 
         Frames streamed *after* the checkpoint are dropped, from the returned
         arrays and from the file. They belong to cycles the resumed run will
@@ -251,6 +262,7 @@ class HDF5Storage:
                 ),
                 "anchor_coords": np.array(grp["anchor_coords"]),
                 "anchor_cv": np.array(grp["anchor_cv"]),
+                "anchor_box": np.array(grp["anchor_box"]) if "anchor_box" in grp else None,
             }
             if "metric_history" in grp:
                 result["metric_history"] = np.array(grp["metric_history"]).reshape(-1)
@@ -264,6 +276,7 @@ class HDF5Storage:
                 result["trajectory"] = np.array(f["trajectory"])
             else:
                 result["trajectory"] = np.empty((0,), dtype=np.float32)
+            result["boxes"] = np.array(f["box"]) if "box" in f else None
         return result
 
 

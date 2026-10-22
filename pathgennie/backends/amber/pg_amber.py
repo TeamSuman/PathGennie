@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pathgennie.core.box import FrameCoords, call_with_box
 from pathgennie.core.cyclelog import build_cycle_logger
 from pathgennie.core.driver import PathGennieDriver, scheme_options
 from pathgennie.core.parallel import ThreadDevicePool
@@ -30,6 +31,7 @@ from .utils import (
     enrich_args,
     load_function,
     parse_prmtop,
+    read_rst7_box,
     read_rst7_coords,
     resolve_case_path,
     wrap_frames_pbc,
@@ -96,8 +98,8 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
     projection_args = enrich_args(projection_args, topology_info)
     convergence_args = enrich_args(convergence_args, topology_info)
 
-    start_coords = read_rst7_coords(initial_restart)
-    start_cv = np.asarray(proj_fn(start_coords, **projection_args), dtype=float)
+    start_coords = FrameCoords(read_rst7_coords(initial_restart), read_rst7_box(initial_restart))
+    start_cv = np.asarray(call_with_box(proj_fn, start_coords, **projection_args), dtype=float)
     print(f"Initial CV: {start_cv}")
 
     # Optional per-component CV periods (e.g. [360.0, 360.0] for dihedrals in
@@ -121,7 +123,7 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         )
 
     def convergence(coords: np.ndarray) -> bool:
-        return bool(conv_fn(coords, **convergence_args))
+        return bool(call_with_box(conv_fn, coords, **convergence_args))
 
     # Guard against CPU oversubscription: when several segments run concurrently
     # (workers_per_device > 1 on CPU, or an MPI/threaded pmemd), each subprocess
@@ -138,7 +140,6 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
 
     # Carry the periodic box so restarts built from bare coordinates (checkpoint
     # resume, WE seeding) stay valid for solvated systems.
-    from .utils import read_rst7_box
     box = read_rst7_box(initial_restart)
 
     engine = CoreAmberEngine(

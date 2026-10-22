@@ -20,6 +20,8 @@ from typing import Callable, Optional, Sequence
 
 import numpy as np
 
+from pathgennie.core.box import call_with_box
+
 from .base import SamplingResult, build_path_ensemble
 
 __all__ = ["make_scalar_cv", "run_downstream", "write_result"]
@@ -30,7 +32,7 @@ def make_scalar_cv(proj_fn: Callable[..., np.ndarray], projection_args: dict, co
     args = projection_args or {}
 
     def scalar(coords: np.ndarray) -> float:
-        v = np.atleast_1d(np.asarray(proj_fn(coords, **args), dtype=float))
+        v = np.atleast_1d(np.asarray(call_with_box(proj_fn, coords, **args), dtype=float))
         return float(v[component])
 
     return scalar

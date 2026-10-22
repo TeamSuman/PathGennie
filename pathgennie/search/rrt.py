@@ -28,6 +28,7 @@ from typing import Callable, List, Optional, Sequence
 
 import numpy as np
 
+from pathgennie.core.box import call_with_box, frame_coords
 from pathgennie.core.engine import Engine, Handle
 from pathgennie.core.parallel import ParallelExecutor, SerialExecutor
 from pathgennie.core.selection import softmax_select
@@ -84,7 +85,7 @@ class RRT:
 
     # -- helpers -------------------------------------------------------------
     def _cv(self, handle: Handle) -> np.ndarray:
-        return np.atleast_1d(np.asarray(self.cv_fn(self.engine.get_coords(handle)), dtype=float))
+        return np.atleast_1d(np.asarray(call_with_box(self.cv_fn, frame_coords(self.engine, handle)), dtype=float))
 
     def add_node(self, handle: Handle, parent: Optional[int]) -> Node:
         node = Node(id=len(self.nodes), handle=handle, cv=self._cv(handle), parent=parent)
