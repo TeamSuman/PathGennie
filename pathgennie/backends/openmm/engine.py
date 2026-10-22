@@ -1,20 +1,19 @@
 """OpenMM in-process engine adapter for the PathGennie core driver.
 
-Wraps one or more ``openmm.Context`` objects — all sharing a single ``System`` on
-a **single GPU** — behind the :class:`pathgennie.core.engine.Engine` protocol so
-the shared :class:`~pathgennie.core.driver.PathGennieDriver` can run the OpenMM
-backend and *saturate that one card*.
+Wraps one or more ``openmm.Context`` objects — all sharing a single ``System``,
+on one GPU or several — behind the :class:`pathgennie.core.engine.Engine`
+protocol so the shared :class:`~pathgennie.core.driver.PathGennieDriver` can run
+the OpenMM backend and *saturate the cards it is given*.
 
-Single-GPU saturation (not multi-GPU)
--------------------------------------
-Path generation is lightweight, so rather than spreading across GPUs the OpenMM
-backend keeps **one GPU busy** by running several swarm walkers concurrently on
-it. Each concurrent walker needs its own ``Context`` (a Context is not
+GPU saturation, on one card or several
+--------------------------------------
+Path generation is lightweight, so the OpenMM backend keeps each GPU busy by
+running several swarm walkers concurrently on it. Each concurrent walker needs its own ``Context`` (a Context is not
 thread-safe), but every Context is built from the *same* ``System``, and an
 OpenMM ``State`` snapshot is portable across Contexts of the same System. So the
 engine keeps:
 
-* a pool of ``n_workers`` Contexts on the one device, handed out one-per-thread
+* a pool of ``n_workers`` Contexts per device, handed out one-per-thread
   through a thread-safe queue (OpenMM releases the GIL during ``step()``, so the
   threads genuinely overlap on the GPU); and
 * a single immutable-``State`` cache (handles are ints into it), guarded by a
@@ -24,6 +23,15 @@ engine keeps:
 free-GPU-memory check while the pool is built): grow until either the core count
 or the GPU memory budget is reached. With ``n_workers=1`` the engine is exactly
 the original single-Context adapter — no extra Contexts are built.
+
+Several GPUs (``devices=[0, 1, ...]``): the engine builds one pool per device
+(``n_workers`` Contexts each, pinned with the platform's device-index property;
+indices are logical, within ``CUDA_VISIBLE_DEVICES``), and ``run_segment`` takes
+its Context from the pool of the ``device`` the executor assigned. Because a
+``State`` is a host-side snapshot, a segment may run on any card regardless of
+where its input State was produced, so the driver and its selection logic are
+unchanged. The primary Simulation Context joins the pool of the device it was
+created on, if that device is listed.
 
 A *handle* is an integer id into the State cache. ``setState``/``getState``
 round-trip positions, velocities **and periodic box vectors**.
@@ -48,7 +56,7 @@ import os
 import queue
 import subprocess
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 # --- optional-backend guard -------------------------------------------------
@@ -157,10 +165,14 @@ class OpenMMEngine:
         *,
         n_workers=1,
         device: Optional[int] = None,
+        devices: Optional[Sequence[int]] = None,
         mem_safety: float = 0.15,
         verbose: bool = False,
         reproducible: bool = False,
     ):
+        """``n_workers`` is per device. ``devices`` (two or more logical GPU indices)
+        enables one Context pool per device; otherwise ``device`` names the single
+        card (``None``: wherever the Simulation's Context lives)."""
         self.sim = simulation
         # Re-seed the integrator per segment (needs a Context reinitialise).
         # Only meaningful when the case asked for a reproducible run.
@@ -170,49 +182,106 @@ class OpenMMEngine:
         self._next_id = 0
         self._lock = threading.Lock()
 
-        # Build the Context pool on the single device. Context 0 is the passed
-        # Simulation's own Context; extras are clones of the same System.
-        cap = resolve_worker_count(n_workers, device)
-        self._contexts: List[Context] = [simulation.context]
-        self._build_pool(cap, mem_safety, device, verbose)
+        devs = [int(d) for d in devices] if devices else []
+        if len(set(devs)) != len(devs):
+            raise ValueError(f"devices must be distinct, got {list(devices)}")
+        if len(devs) <= 1:
+            # Single device. Context 0 is the passed Simulation's own Context;
+            # extras are clones of the same System on the same card.
+            device = devs[0] if devs else device
+            cap = resolve_worker_count(n_workers, device)
+            self._contexts: List[Context] = [simulation.context]
+            self._build_pool(cap, mem_safety, device, verbose)
+            self.devices: List[Optional[int]] = [device]
+            self._device_contexts: Dict[Optional[int], List[Context]] = {device: self._contexts}
+        else:
+            # One pool per device, each pinned explicitly. The Simulation's own
+            # Context joins the pool of the device it lives on, if listed.
+            home = self._context_device(simulation.context)
+            self.devices = devs
+            self._device_contexts = {}
+            for d in devs:
+                cap = resolve_worker_count(n_workers, d)
+                self._contexts = [simulation.context] if home == d else []
+                self._build_pool(cap, mem_safety, d, verbose, pin=True)
+                if not self._contexts:
+                    raise RuntimeError(f"OpenMMEngine: could not build a Context on device {d}")
+                self._device_contexts[d] = self._contexts
+            self._contexts = [c for d in devs for c in self._device_contexts[d]]
         self.n_workers = len(self._contexts)
+        self.workers_by_device = {d: len(c) for d, c in self._device_contexts.items()}
 
-        self._pool: "queue.Queue[Context]" = queue.Queue()
-        for ctx in self._contexts:
-            self._pool.put(ctx)
+        self._pools: Dict[Optional[int], "queue.Queue[Context]"] = {}
+        for d, ctxs in self._device_contexts.items():
+            q: "queue.Queue[Context]" = queue.Queue()
+            for ctx in ctxs:
+                q.put(ctx)
+            self._pools[d] = q
+        self._pool = self._pools[self.devices[0]]
+        if verbose and len(self.devices) > 1:
+            print("OpenMMEngine: Contexts per device " + ", ".join(
+                f"{d}: {n}" for d, n in self.workers_by_device.items()))
 
     # -- pool construction ---------------------------------------------------
-    def _clone_context(self) -> Context:
+    @staticmethod
+    def _device_key(platform) -> Optional[str]:
+        return {"CUDA": "DeviceIndex", "OpenCL": "OpenCLDeviceIndex"}.get(platform.getName())
+
+    def _context_device(self, ctx: Context) -> Optional[int]:
+        """Logical device index a Context runs on (``None`` on CPU/Reference)."""
+        platform = ctx.getPlatform()
+        key = self._device_key(platform)
+        if key is None:
+            return None
+        try:
+            idx = platform.getPropertyValue(ctx, key)
+            return int(str(idx).split(",")[0]) if idx not in (None, "") else None
+        except Exception:  # noqa: BLE001 - properties are best-effort
+            return None
+
+    def _clone_context(self, device: Optional[int] = None) -> Context:
+        """A new Context of the same System; on ``device`` if given, else on the
+        primary Context's device. On CPU/Reference ``device`` is only a label."""
         # A Context owns its integrator, so each clone needs a fresh copy.
         integrator = XmlSerializer.deserialize(XmlSerializer.serialize(self.sim.integrator))
         platform = self.sim.context.getPlatform()
         props = {}
-        try:  # pin extras to the same physical device as the primary Context
-            name = platform.getName()
-            key = {"CUDA": "DeviceIndex", "OpenCL": "OpenCLDeviceIndex"}.get(name)
-            if key is not None:
+        key = self._device_key(platform)
+        if key is not None and device is not None:
+            props[key] = str(int(device))
+        elif key is not None:
+            try:  # pin extras to the same physical device as the primary Context
                 idx = platform.getPropertyValue(self.sim.context, key)
                 if idx not in (None, ""):
                     props[key] = idx
-        except Exception:  # noqa: BLE001 - properties are best-effort
-            props = {}
+            except Exception:  # noqa: BLE001 - properties are best-effort
+                props = {}
+        if key == "CUDA" and props:
+            try:  # keep the primary Context's precision on every card
+                props["Precision"] = platform.getPropertyValue(self.sim.context, "Precision")
+            except Exception:  # noqa: BLE001
+                pass
         if props:
             return Context(self.sim.system, integrator, platform, props)
         return Context(self.sim.system, integrator, platform)
 
-    def _build_pool(self, cap: int, mem_safety: float, device: Optional[int], verbose: bool) -> None:
+    def _build_pool(self, cap: int, mem_safety: float, device: Optional[int], verbose: bool,
+                    pin: bool = False) -> None:
+        """Grow ``self._contexts`` to ``cap`` (memory permitting); ``pin`` builds
+        the extras explicitly on ``device`` rather than beside the primary Context."""
         while len(self._contexts) < cap:
             free_total = _gpu_free_total_bytes(device)
             if free_total is not None and free_total[0] < mem_safety * free_total[1]:
                 break  # memory-limited: stop growing the pool
             try:
-                self._contexts.append(self._clone_context())
+                self._contexts.append(self._clone_context(device if pin else None))
             except Exception as exc:  # noqa: BLE001 - fall back to what we have
                 if verbose:
                     print(f"OpenMMEngine: stopped context pool at {len(self._contexts)} ({exc})")
                 break
         if verbose:
-            print(f"OpenMMEngine: {len(self._contexts)} concurrent context(s) on the GPU")
+            where = "the GPU" if device is None else f"device {device}"
+            print(f"OpenMMEngine: {len(self._contexts)} concurrent context(s) on {where}")
 
     # -- cache helpers (thread-safe) -----------------------------------------
     def _store(self, state: State) -> int:
@@ -255,7 +324,8 @@ class OpenMMEngine:
         assert isinstance(handle, int)
         with self._lock:
             state = self._cache[handle]
-        ctx = self._pool.get()
+        pool = self._pools.get(device, self._pool)
+        ctx = pool.get()
         try:
             ctx.setState(state)
             integrator = ctx.getIntegrator()
@@ -292,7 +362,7 @@ class OpenMMEngine:
                 integrator.step(int(n_steps))
                 new_state = ctx.getState(getPositions=True, getVelocities=True)
         finally:
-            self._pool.put(ctx)
+            pool.put(ctx)
 
         result_handle = self._store(new_state)
         if save_subframes:

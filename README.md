@@ -289,14 +289,18 @@ The file has four main parts:
   velocity randomisation. Set it for reproducible runs — the seed → trial
   mapping is deterministic even across the multi-GPU thread pool.
 
-**Parallel / device placement (AMBER & GROMACS):**
+**Parallel / device placement (AMBER, GROMACS & OpenMM):**
 * `devices` (list of int, optional): Logical GPU indices to spread the swarm
   across. Interpreted **relative to the scheduler's `CUDA_VISIBLE_DEVICES`
   allocation** — with `--gres=gpu:2` (Slurm) or `ngpus=2` (PBS), `devices: [0, 1]`
   targets the two GPUs you were granted, never GPUs owned by another job.
+  AMBER/GROMACS run each segment as a subprocess on its device; OpenMM builds one
+  pool of in-process Contexts per listed device and runs each segment on a
+  Context of the device it was assigned (trial *i* → `devices[i % n]`).
 * `workers_per_device` (int, optional): Concurrent MD segments per device
   (replaces the legacy `tau1_workers`). Use `1` for large systems that already
-  fill a GPU; `>1` only for small systems.
+  fill a GPU; `>1` only for small systems. For OpenMM this is the number of
+  Contexts per device (`"auto"`: CPU cores, capped by free GPU memory).
 * `cpu_threads_per_worker` (int, optional): Pin per-worker OpenMP/MKL threads
   (and inject GROMACS `-ntomp`) so concurrent CPU segments do not each grab every
   core. Set roughly `cores / (devices × workers_per_device)`.
