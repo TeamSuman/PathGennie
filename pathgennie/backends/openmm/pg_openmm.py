@@ -281,10 +281,11 @@ def run(case_dir: Path, config_name: str = "input.yaml") -> None:
         temperature=temperature,
         sigma=pg_cfg.get("sigma", 0.05),
         seed=pg_cfg.get("seed"),
-        # Single-GPU saturation: run this many concurrent walkers on one card
-        # ("auto" sizes from cores + free GPU memory); `devices` picks the card.
+        # Concurrent walkers per card ("auto" sizes from cores + free GPU memory);
+        # `devices` lists the cards (logical indices within CUDA_VISIBLE_DEVICES):
+        # one -> that card, several -> one Context pool per card.
         workers_per_device=pg_cfg.get("workers_per_device", pg_cfg.get("tau1_workers", 1)),
-        device=(pg_cfg.get("devices") or [None])[0],
+        devices=pg_cfg.get("devices"),
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
         checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),

@@ -14,7 +14,7 @@ Comput. 2025.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Sequence
 
 import numpy as np
 # --- optional-backend guard -------------------------------------------------
@@ -62,6 +62,7 @@ class PathGennieMD:
         seed: Optional[int] = None,
         workers_per_device=1,
         device: Optional[int] = None,
+        devices: Optional[Sequence[int]] = None,
         save_subframes: bool = False,
         subframe_stride: int = 1,
         checkpoint_freq: int = 0,
@@ -91,7 +92,10 @@ class PathGennieMD:
         self.sigma = sigma
         self.seed = seed
         self.workers_per_device = workers_per_device
-        self.device = device
+        # Two or more devices: one Context pool per GPU, trials round-robined over
+        # them. One device (or none) is the single-card path.
+        self.devices = [int(d) for d in devices] if devices and len(devices) > 1 else None
+        self.device = int(devices[0]) if devices and len(devices) == 1 else device
         self.save_subframes = bool(save_subframes)
         self.driver_options = dict(driver_options or {})
         # None -> reproducible exactly when seeded (previous behaviour). False with a
@@ -114,12 +118,13 @@ class PathGennieMD:
         checkpoint_path: Optional[str] = None,
         checkpoint_freq: Optional[int] = None,
     ):
-        # Single-GPU saturation: build a pool of concurrent Contexts sized from
+        # GPU saturation: a pool of concurrent Contexts per device, sized from
         # workers_per_device (an int, or "auto" -> cores capped by free GPU memory).
         n_workers = resolve_worker_count(self.workers_per_device, self.device)
         engine = OpenMMEngine(
             self.sim, self.temperature,
-            n_workers=n_workers, device=self.device, verbose=verbosity >= 1,
+            n_workers=n_workers, device=self.device, devices=self.devices,
+            verbose=verbosity >= 1,
             # A seeded case wants reproducibility, which on a stochastic integrator
             # costs a Context reinitialise per segment. Unseeded runs skip it.
             reproducible=self.reproducible_md,
@@ -144,11 +149,16 @@ class PathGennieMD:
         def convergence(coords: np.ndarray) -> bool:
             return bool(converge_fn(coords, **converge_args))
 
-        # One GPU, several concurrent walkers: a thread pool of engine.n_workers
-        # runs segments on the single card. Falls back to a plain serial path when
-        # only one Context could be built (no regression on tiny/CPU runs).
-        dev_list = [self.device] if self.device is not None else None
-        if engine.n_workers > 1:
+        # Several walkers per card: a thread pool with one slot per Context runs
+        # segments concurrently; with several devices, trial i goes to
+        # devices[i % n] and run_segment takes a Context from that device's pool.
+        # Falls back to a plain serial path when only one Context could be built
+        # (no regression on tiny/CPU runs).
+        if self.devices:
+            executor = ThreadDevicePool(devices=engine.devices,
+                                        workers_per_device=max(engine.workers_by_device.values()))
+        elif engine.n_workers > 1:
+            dev_list = [self.device] if self.device is not None else None
             executor = ThreadDevicePool(devices=dev_list, workers_per_device=engine.n_workers)
         else:
             executor = SerialExecutor(device=self.device)

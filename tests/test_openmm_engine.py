@@ -149,3 +149,87 @@ def test_openmm_concurrent_matches_serial_verlet():
     assert nw1 == 1 and nw4 == 4
     np.testing.assert_allclose(m1, m4)
     np.testing.assert_allclose(traj1, traj4)
+
+
+# --------------------------------------------------------------------------- #
+# Several GPUs: one Context pool per device
+# --------------------------------------------------------------------------- #
+
+def test_openmm_engine_builds_one_pool_per_device():
+    # On CPU the device index is only a label, which is enough to check that each
+    # device gets its own pool of n_workers Contexts and that the Simulation's
+    # Context (on no listed device) is not handed out for segments.
+    sim, n = _build_simulation()
+    engine = OpenMMEngine(sim, temperature=300.0, n_workers=2, devices=[0, 1])
+    assert engine.devices == [0, 1]
+    assert engine.workers_by_device == {0: 2, 1: 2}
+    assert engine.n_workers == 4
+    assert all(engine._pools[d].qsize() == 2 for d in (0, 1))
+    assert sim.context not in engine._contexts
+
+
+def test_openmm_engine_routes_segments_to_the_assigned_device():
+    import queue
+
+    class CountingQueue(queue.Queue):
+        def __init__(self):
+            super().__init__()
+            self.gets = 0
+
+        def get(self, *a, **k):
+            self.gets += 1
+            return super().get(*a, **k)
+
+    sim, n = _build_simulation()
+    engine = OpenMMEngine(sim, temperature=300.0, n_workers=1, devices=[0, 1])
+    for d in (0, 1):
+        q = CountingQueue()
+        while not engine._pools[d].empty():
+            q.put(engine._pools[d].get())
+        engine._pools[d] = q
+    h0 = engine.create_state(_positions(n))
+    for s in range(3):
+        engine.run_segment(engine.clone_anchor(h0), 5, randomize_velocities=True, seed=s, device=1)
+    engine.run_segment(engine.clone_anchor(h0), 5, randomize_velocities=True, seed=9, device=0)
+    assert engine._pools[1].gets == 3 and engine._pools[0].gets == 1
+    assert engine._pools[0].qsize() == 1 and engine._pools[1].qsize() == 1  # Contexts returned
+
+
+def test_openmm_engine_rejects_repeated_devices():
+    sim, _ = _build_simulation()
+    with pytest.raises(ValueError):
+        OpenMMEngine(sim, temperature=300.0, devices=[0, 0])
+
+
+def test_openmm_multi_device_matches_single_device_verlet():
+    # Which device (Context) runs a segment must not change a deterministic run:
+    # two devices x 2 walkers reproduce one device x 1 walker exactly.
+    def run_once(devices, workers):
+        sim, n = _build_simulation(integrator="verlet")
+        runner = PathGennieMD(
+            simulation=sim,
+            projection_fn=lambda c: np.array([c[0, 0]]),
+            mode="escape",
+            convergence_fn=lambda c, **k: abs(c[0, 0]) > 50.0,
+            temperature=300.0, sigma=0.1, seed=2024,
+            workers_per_device=workers, devices=devices,
+        )
+        out = runner.run(_positions(n), tau1=3, tau2=5, max_trial=6,
+                         max_cycle=15, save_freq=2, verbosity=0)
+        return out, runner.engine, runner.executor
+
+    (traj1, m1), eng1, _ = run_once(None, 1)
+    (traj2, m2), eng2, ex2 = run_once([0, 1], 2)
+    assert eng1.n_workers == 1
+    assert eng2.workers_by_device == {0: 2, 1: 2} and ex2.devices == [0, 1]
+    np.testing.assert_allclose(m1, m2)
+    np.testing.assert_allclose(traj1, traj2)
+
+
+def test_pathgenniemd_single_listed_device_is_single_card_path():
+    sim, n = _build_simulation()
+    runner = PathGennieMD(
+        simulation=sim, projection_fn=lambda c: np.array([c[0, 0]]), mode="escape",
+        convergence_fn=lambda c, **k: False, temperature=300.0, devices=[0],
+    )
+    assert runner.devices is None and runner.device == 0
