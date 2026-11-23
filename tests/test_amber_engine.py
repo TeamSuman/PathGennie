@@ -24,7 +24,7 @@ RST7 = REPO / "examples" / "alanine_dipeptide" / "common" / "ala_dipeptide_equil
 
 
 def _install_fake_pmemd(monkeypatch, recorder, lock):
-    def fake_run(cmd, check=True, capture_output=True, text=True, env=None):
+    def fake_run(cmd, check=True, capture_output=True, text=True, env=None, cwd=None):
         in_path = cmd[cmd.index("-c") + 1]
         out_path = cmd[cmd.index("-r") + 1]
         Path(out_path).write_bytes(Path(in_path).read_bytes())
@@ -78,3 +78,44 @@ def test_amber_single_device_sets_env(tmp_path, monkeypatch):
     h = engine.run_segment(str(RST7), 1, randomize_velocities=True, seed=5, device=2)
     assert Path(h).exists()
     assert recorder[-1]["device"] == "2"
+
+
+def test_amber_segments_run_in_isolated_working_dirs(tmp_path, monkeypatch):
+    """sander's external-QM interfaces (qm_theory='EXTERN': ORCA, Gaussian, ...) write fixed file names
+    (orc_job.inp, inpfile.xyz, orc_job.engrad) into the working directory. Concurrent segments must not
+    share it, every path handed to sander must survive the change of directory, and the directory is
+    removed after a successful segment but kept when sander fails."""
+    import subprocess
+
+    seen = []
+
+    def fake_run(cmd, cwd=None, **kw):
+        assert cwd is not None and Path(cwd).is_dir()
+        for flag in ("-i", "-p", "-c", "-r", "-o"):
+            assert Path(cmd[cmd.index(flag) + 1]).is_absolute(), flag
+        Path(cmd[cmd.index("-r") + 1]).write_bytes(Path(cmd[cmd.index("-c") + 1]).read_bytes())
+        (Path(cwd) / "orc_job.inp").write_text("left behind by the QM interface")
+        seen.append(cwd)
+
+    monkeypatch.setattr(amber_engine.subprocess, "run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    engine = CoreAmberEngine(
+        topology=RST7, executable=Path("/bin/true"),
+        scratch_dir=Path("scratch"),          # relative on purpose
+        temperature=300.0, mdin_controls=default_mdin_controls("vacuum"),
+    )
+    for k in range(3):
+        engine.run_segment(str(RST7), 1, randomize_velocities=True, seed=k)
+    assert len(set(seen)) == 3
+    assert not any(Path(c).exists() for c in seen)
+
+    def failing_run(cmd, cwd=None, **kw):
+        seen.append(cwd)
+        raise subprocess.CalledProcessError(1, cmd, output="", stderr="boom")
+
+    monkeypatch.setattr(amber_engine.subprocess, "run", failing_run)
+    try:
+        engine.run_segment(str(RST7), 1, randomize_velocities=True, seed=9)
+    except RuntimeError:
+        pass
+    assert Path(seen[-1]).is_dir()            # kept for inspection

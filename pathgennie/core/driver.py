@@ -5,7 +5,8 @@ GROMACS backends previously each carried their own copy of:
 
     for cycle in range(max_cycle):
         run N samplers (tau1) from the anchor with fresh velocities   # swarm
-        score each by progress in CV space and softmax-select one     # selection
+        score each by progress in CV space and softmax-select one     # selection (selection="softmax")
+          or take the first that advances, else a tau1+tau2 fallback  # (selection="first_accept")
         extend the chosen sampler for tau2 (runner)                   # commit
         update the anchor, optionally rejecting a worse candidate
         check convergence
@@ -28,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
+import json
 import warnings
 
 import numpy as np
@@ -65,7 +67,20 @@ class PathGennieDriver:
         save_subframes: bool = False,
         subframe_stride: int = 1,
         checkpoint_freq: int = 0,
+        selection: str = "softmax",
+        accept_batch: int = 0,
+        trial_log: Optional[str] = None,
     ):
+        # selection="first_accept" is the rule the PathGennie papers describe (JCTC 2025; JCTC 2026 §2.1): samplers
+        # are drawn in order and the first that advances the metric beyond the anchor's is accepted and extended by
+        # tau2; if none of max_trial does, an unbiased tau1+tau2 fallback from the anchor becomes the candidate.
+        # Samplers run in parallel batches of accept_batch (0 = all max_trial at once); within a batch the
+        # lowest-index advancing sampler wins, so the outcome is the sequential rule's, and every sampler run in a
+        # batch is counted as spent. Added 25 Oct 2026 for the protocol ablation (phase1/ablation_F_MeCl.md).
+        if selection not in ("softmax", "first_accept"):
+            raise ValueError(f"selection must be 'softmax' or 'first_accept', not {selection!r}")
+        self.selection = selection
+        self.accept_batch = max(0, int(accept_batch))
         self.engine = engine
         self.progress = progress
         self.convergence_fn = convergence_fn
@@ -78,6 +93,10 @@ class PathGennieDriver:
         self.save_subframes = bool(save_subframes)
         self.subframe_stride = max(1, int(subframe_stride))
         self.checkpoint_freq = max(0, int(checkpoint_freq))
+        # trial_log: path of a JSON-lines file, one line per cycle with the metric of every sampler run, which
+        # one was taken, and the metric after tau2. It gives acceptance, gain and the gain kept after relaxation
+        # per cycle (phaseX/TUNING_STRATEGY.md, 18 Nov 2026). Appended to, so a resumed run continues the file.
+        self.trial_log = str(trial_log) if trial_log else None
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -223,8 +242,29 @@ class PathGennieDriver:
             # scheduling (numpy's Generator is not thread-safe). This makes a
             # seeded run reproducible under ThreadDevicePool, matching Serial.
             cycle_seeds = [self._seed() for _ in range(max_trial)]
-            all_trials = self.executor.map(worker, list(range(max_trial)))
-            trials = [t for t in all_trials if t is not None]
+            fallback = False
+            if self.selection == "first_accept":
+                trials, chosen_idx, n_bad, n_tried = [], None, 0, 0
+                step = self.accept_batch or max_trial
+                for lo in range(0, max_trial, step):
+                    idx = list(range(lo, min(lo + step, max_trial)))
+                    batch = self.executor.map(worker, idx)
+                    n_tried += len(idx)
+                    for t in batch:                     # map preserves order: lowest index first
+                        if t is None:
+                            n_bad += 1
+                            continue
+                        trials.append(t)
+                        if chosen_idx is None and t.metric > anchor_metric:
+                            chosen_idx = len(trials) - 1
+                    if chosen_idx is not None:
+                        break
+                all_trials = [None] * n_bad + trials     # for the quarantine count below
+                fallback = chosen_idx is None
+            else:
+                all_trials = self.executor.map(worker, list(range(max_trial)))
+                trials = [t for t in all_trials if t is not None]
+                n_tried = max_trial
             if not trials:
                 raise RuntimeError(
                     f"all {max_trial} trials failed at cycle {cycle}; the run cannot "
@@ -234,56 +274,88 @@ class PathGennieDriver:
                     "unlucky segment."
                 )
             n_quarantined += len(all_trials) - len(trials)
-            metrics = np.array([t.metric for t in trials], dtype=float)
-            chosen_idx = softmax_select(metrics, self.sigma, self.rng)
-            chosen = trials[chosen_idx]
+            if self.selection != "first_accept":
+                metrics = np.array([t.metric for t in trials], dtype=float)
+                chosen_idx = softmax_select(metrics, self.sigma, self.rng)
+            chosen = None if fallback else trials[chosen_idx]
 
-            # ---- runner (tau2) from the chosen sampler ----
-            tau2_device = getattr(chosen, "device", None)
-            if tau2_device is None:
+            if fallback:
+                # first-accept fallback: no sampler advanced, so one unbiased tau1 + tau2 segment from the anchor
+                # supplies the candidate (kept or rejected below like any other).
                 tau2_device = self.executor.devices[0]
-            tau2_seed = self._seed()
-            # The runner can fail for the same reasons a sampler can. Unlike a
-            # sampler it is not one of N, so there is nothing to select among --
-            # but the chosen sampler is itself a valid, already-scored state, so
-            # fall back to it. That is exactly the state reject_worse_tau2 keeps
-            # when the runner merely comes out worse.
-            tau2_handle = None
-            try:
-                tau2_handle = self.engine.run_segment(
-                    chosen.handle, tau2, randomize_velocities=False,
-                    seed=tau2_seed, device=tau2_device,
-                )
-                tau2_coords = self.engine.get_coords(tau2_handle)
-                tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
-                tau2_failed = False
-            except Exception as exc:  # noqa: BLE001 - one runner, not the run
-                if tau2_handle is not None:
+                tau2_seed = self._seed()
+                fb_clone = self.engine.clone_anchor(anchor)
+                try:
+                    tau2_handle = self.engine.run_segment(
+                        fb_clone, tau1 + tau2, randomize_velocities=True,
+                        seed=tau2_seed, device=tau2_device,
+                    )
+                    if tau2_handle != fb_clone:
+                        self.engine.release(fb_clone)
+                    tau2_coords = self.engine.get_coords(tau2_handle)
+                    tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
+                    cand_handle, cand_coords, cand_cv, cand_metric = (
+                        tau2_handle, tau2_coords, tau2_cv, tau2_metric,
+                    )
+                except Exception as exc:  # noqa: BLE001 - one fallback, not the run
                     try:
-                        self.engine.release(tau2_handle)
-                    except Exception:  # noqa: BLE001 - already failing
+                        self.engine.release(fb_clone)
+                    except Exception:  # noqa: BLE001
                         pass
-                tau2_handle = None
-                tau2_failed = True
-                n_quarantined += 1
-                if self.verbosity:
-                    print(f"Cycle {cycle}: runner quarantined "
-                          f"({type(exc).__name__}: {exc}); keeping the chosen sampler")
-
-            # ---- candidate selection (optional rejection of a worse runner) ----
-            if tau2_failed:
-                cand_handle, cand_coords, cand_cv, cand_metric = (
-                    chosen.handle, chosen.coords, chosen.cv, chosen.metric,
-                )
-            elif self.reject_worse_tau2 and tau2_metric < chosen.metric:
-                cand_handle, cand_coords, cand_cv, cand_metric = (
-                    chosen.handle, chosen.coords, chosen.cv, chosen.metric,
-                )
-                self.engine.release(tau2_handle)
+                    tau2_handle = None
+                    n_quarantined += 1
+                    if self.verbosity:
+                        print(f"Cycle {cycle}: fallback quarantined ({type(exc).__name__}: {exc}); anchor kept")
+                    cand_handle, cand_coords, cand_cv, cand_metric = (
+                        anchor, anchor_coords, anchor_cv, anchor_metric,
+                    )
             else:
-                cand_handle, cand_coords, cand_cv, cand_metric = (
-                    tau2_handle, tau2_coords, tau2_cv, tau2_metric,
-                )
+                # ---- runner (tau2) from the chosen sampler ----
+                tau2_device = getattr(chosen, "device", None)
+                if tau2_device is None:
+                    tau2_device = self.executor.devices[0]
+                tau2_seed = self._seed()
+                # The runner can fail for the same reasons a sampler can. Unlike a
+                # sampler it is not one of N, so there is nothing to select among --
+                # but the chosen sampler is itself a valid, already-scored state, so
+                # fall back to it. That is exactly the state reject_worse_tau2 keeps
+                # when the runner merely comes out worse.
+                tau2_handle = None
+                try:
+                    tau2_handle = self.engine.run_segment(
+                        chosen.handle, tau2, randomize_velocities=False,
+                        seed=tau2_seed, device=tau2_device,
+                    )
+                    tau2_coords = self.engine.get_coords(tau2_handle)
+                    tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
+                    tau2_failed = False
+                except Exception as exc:  # noqa: BLE001 - one runner, not the run
+                    if tau2_handle is not None:
+                        try:
+                            self.engine.release(tau2_handle)
+                        except Exception:  # noqa: BLE001 - already failing
+                            pass
+                    tau2_handle = None
+                    tau2_failed = True
+                    n_quarantined += 1
+                    if self.verbosity:
+                        print(f"Cycle {cycle}: runner quarantined "
+                              f"({type(exc).__name__}: {exc}); keeping the chosen sampler")
+
+                # ---- candidate selection (optional rejection of a worse runner) ----
+                if tau2_failed:
+                    cand_handle, cand_coords, cand_cv, cand_metric = (
+                        chosen.handle, chosen.coords, chosen.cv, chosen.metric,
+                    )
+                elif self.reject_worse_tau2 and tau2_metric < chosen.metric:
+                    cand_handle, cand_coords, cand_cv, cand_metric = (
+                        chosen.handle, chosen.coords, chosen.cv, chosen.metric,
+                    )
+                    self.engine.release(tau2_handle)
+                else:
+                    cand_handle, cand_coords, cand_cv, cand_metric = (
+                        tau2_handle, tau2_coords, tau2_cv, tau2_metric,
+                    )
 
             # ---- optional rejection vs the existing anchor ----
             if self.reject_worse_anchor and cand_metric < anchor_metric:
@@ -311,6 +383,20 @@ class PathGennieDriver:
                 if new_anchor != previous_anchor and previous_anchor != initial_handle:
                     self.engine.release(previous_anchor)
 
+            if self.trial_log:
+                took_runner = (not fallback) and (not tau2_failed)
+                with open(self.trial_log, "a") as fh:
+                    fh.write(json.dumps({
+                        "cycle": cycle, "tau1": int(tau1), "tau2": int(tau2),
+                        "anchor_metric": float(anchor_metric),
+                        "trial_metrics": [float(t.metric) for t in trials],
+                        "n_tried": int(n_tried), "fallback": bool(fallback),
+                        "chosen": None if fallback else int(chosen_idx),
+                        "sampler_metric": None if fallback else float(chosen.metric),
+                        "runner_metric": float(tau2_metric) if took_runner else None,
+                        "metric": float(metric),
+                    }) + "\n")
+
             anchor, anchor_coords, anchor_cv, anchor_metric = new_anchor, coords, cv, metric
             metric_history.append(metric)
 
@@ -327,14 +413,14 @@ class PathGennieDriver:
                 tau2_replay_handle = None
                 try:
                     tau1_result = self.engine.run_segment(
-                        replay_handle, tau1, randomize_velocities=True,
-                        seed=cycle_seeds[chosen_idx], device=tau2_device,
+                        replay_handle, (tau1 + tau2) if fallback else tau1, randomize_velocities=True,
+                        seed=tau2_seed if fallback else cycle_seeds[chosen_idx], device=tau2_device,
                         save_subframes=True, subframe_stride=self.subframe_stride,
                     )
                     tau1_replay_handle, tau1_subframes = tau1_result
 
                     subframe_blocks = [tau1_subframes]
-                    if new_anchor == tau2_handle:
+                    if new_anchor == tau2_handle and not fallback:
                         tau2_result = self.engine.run_segment(
                             tau1_replay_handle, tau2, randomize_velocities=False,
                             seed=tau2_seed, device=tau2_device,
@@ -362,7 +448,9 @@ class PathGennieDriver:
                     save_frame(coords, anchor, metric)
                     last_saved_cycle = cycle
                 if self.verbosity:
-                    print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}")
+                    extra = (f", tried={n_tried}{' fallback' if fallback else ''}"
+                             if self.selection == "first_accept" else "")
+                    print(f"Cycle {cycle}: metric={metric:.4f}, CV={cv}{extra}")
 
             if ckpt_freq > 0 and cycle % ckpt_freq == 0 and storage is not None:
                 storage.save_checkpoint(

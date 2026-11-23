@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import shutil
 import subprocess
 import threading
 import uuid
@@ -31,8 +32,10 @@ import numpy as np
 
 from pathgennie.core.parallel import resolve_cuda_visible_device
 
+from .adaptive_qm import read_qm_selection, selection_path, write_qm_selection
 from .utils import (
     read_native_trajectory,
+    read_rst7_box,
     read_rst7_coords,
     rst7_has_velocities,
     write_mdin,
@@ -54,6 +57,8 @@ class CoreAmberEngine:
         command_prefix: Optional[list] = None,
         env_overrides: Optional[dict] = None,
         box=None,
+        qm_region=None,
+        qm_selection_log: Optional[Path] = None,
     ):
         self.topology = str(topology)
         self.exe = str(executable)
@@ -76,6 +81,12 @@ class CoreAmberEngine:
                 "sander will reject them on checkpoint resume or WE seeding.",
                 RuntimeWarning, stacklevel=2,
             )
+        # Optional AdaptiveQMRegion: the QM solvent is re-selected at the start of every
+        # segment and recorded in a .qmsel sidecar next to the restart (see adaptive_qm.py).
+        self.qm_region = qm_region
+        if qm_region is not None:
+            qm_region.check_template(extra_mdin_text)
+        self.qm_selection_log = Path(qm_selection_log) if qm_selection_log else None
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -109,12 +120,36 @@ class CoreAmberEngine:
         src = Path(handle)
         dst = self.scratch_dir / f"anchor_{self._uid()}.rst7"
         dst.write_bytes(src.read_bytes())
+        if selection_path(src).exists():
+            selection_path(dst).write_bytes(selection_path(src).read_bytes())
         return str(dst)
+
+    def _select_qm(self, handle, stem: str):
+        """QM residues for a segment starting at ``handle``; hysteresis against its parent."""
+        coords = read_rst7_coords(handle)
+        box = read_rst7_box(handle) if int(self.mdin_controls.get("ntb", 0) or 0) else None
+        if box is None and int(self.mdin_controls.get("ntb", 0) or 0):
+            box = self.box
+        previous = read_qm_selection(handle)
+        residues = self.qm_region.select(coords, box=box, previous=previous)
+        if self.qm_selection_log is not None:
+            line = (f"{stem} {Path(handle).name} n_res={len(residues)} "
+                    f"n_atoms={self.qm_region.n_atoms(residues)} {self.qm_region.mask(residues)}\n")
+            with self._lock:
+                with open(self.qm_selection_log, "a") as fh:
+                    fh.write(line)
+        return residues
 
     def run_segment(self, handle, n_steps, *, randomize_velocities, seed, device=None,
                     save_subframes=False, subframe_stride=1):
-        workdir = self._device_dir(device)
+        workdir = self._device_dir(device).resolve()
         stem = f"seg_{self._uid()}"
+        # sander's external-QM interfaces (qm_theory='EXTERN': ORCA, Gaussian, ...) write fixed file
+        # names (orc_job.inp, inpfile.xyz, orc_job.engrad) into the working directory, so concurrent
+        # segments sharing one directory would overwrite each other's QM input and forces. Each
+        # segment runs in its own directory: removed after success, kept when sander fails.
+        segdir = workdir / stem
+        segdir.mkdir()
         mdin = workdir / f"{stem}.mdin"
         out_rst = workdir / f"{stem}.rst7"
         traj_nc = workdir / f"{stem}.nc"
@@ -137,6 +172,12 @@ class CoreAmberEngine:
             continue_velocities = False
             self._warn_velocity_fallback()
 
+        extra_text = self.extra_mdin_text
+        qm_residues = None
+        if self.qm_region is not None:
+            qm_residues = self._select_qm(handle, stem)
+            extra_text = self.qm_region.apply(extra_text, qm_residues)
+
         write_mdin(
             mdin,
             int(n_steps),
@@ -144,13 +185,14 @@ class CoreAmberEngine:
             seg_controls,
             continue_velocities=continue_velocities,
             random_seed=int(seed),
-            extra_text=self.extra_mdin_text,
+            extra_text=extra_text,
         )
+        exe = str(Path(self.exe).resolve()) if os.sep in self.exe else self.exe
         cmd = [
-            *self.command_prefix, self.exe, "-O",
+            *self.command_prefix, exe, "-O",
             "-i", str(mdin),
-            "-p", self.topology,
-            "-c", str(handle),
+            "-p", str(Path(self.topology).resolve()),
+            "-c", str(Path(handle).resolve()),
             "-r", str(out_rst),
             "-o", str(workdir / f"{stem}.out"),
             "-inf", str(workdir / f"{stem}.mdinfo"),
@@ -165,18 +207,22 @@ class CoreAmberEngine:
         env.update(self.env_overrides)
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, env=env, cwd=str(segdir))
         except subprocess.CalledProcessError as exc:
             message = [
                 f"AMBER segment failed with exit code {exc.returncode}.",
                 "Command: " + " ".join(cmd),
+                f"Working directory (kept): {segdir}",
             ]
             if exc.stdout:
                 message.append("stdout:\n" + exc.stdout[-4000:])
             if exc.stderr:
                 message.append("stderr:\n" + exc.stderr[-4000:])
             raise RuntimeError("\n".join(message)) from exc
+        shutil.rmtree(segdir, ignore_errors=True)
 
+        if qm_residues is not None:
+            write_qm_selection(out_rst, qm_residues)
         result_handle = str(out_rst)
         if save_subframes:
             # The protocol says the return *changes shape* when subframes are

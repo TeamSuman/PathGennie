@@ -19,10 +19,10 @@ import numpy as np
 import pytest
 
 from pathgennie.backends.amber.engine import CoreAmberEngine
-from pathgennie.backends.amber.utils import rst7_has_velocities, write_rst7_coords
+from pathgennie.backends.amber.utils import read_rst7_box, rst7_has_velocities, write_rst7_coords
 
 
-def _write_rst7(path, coords, *, velocities=None, box=None):
+def _write_rst7(path, coords, *, velocities=None, box=None, title="title"):
     """Write an rst7 by hand so the tests control exactly which blocks exist."""
     body = []
     for block in ([coords] if velocities is None else [coords, velocities]):
@@ -31,7 +31,7 @@ def _write_rst7(path, coords, *, velocities=None, box=None):
             body.append("".join(f"{v:12.7f}" for v in flat[i:i + 6]))
     if box is not None:
         body.append("".join(f"{v:12.7f}" for v in box))
-    path.write_text(f"title\n{len(coords):5d}\n" + "\n".join(body) + "\n")
+    path.write_text(f"{title}\n{len(coords):5d}\n" + "\n".join(body) + "\n")
     return path
 
 
@@ -83,6 +83,25 @@ def test_detector_does_not_mistake_a_box_line_for_velocities(tmp_path):
     path = _write_rst7(tmp_path / "boxed.rst7", coords,
                        box=[30.0, 30.0, 30.0, 90.0, 90.0, 90.0])
     assert not rst7_has_velocities(path, has_box=True)
+
+
+def test_detector_reads_a_blank_title(tmp_path):
+    """sander copies the input title, so a run seeded from a blank-titled rst7
+    writes blank-titled restarts. Dropping that line misread the atom count, and
+    every tau2 runner of the Phase 1 gas runs drew fresh velocities (31 Oct 2026)."""
+    coords = np.arange(18, dtype=float).reshape(6, 3)
+    full = _write_rst7(tmp_path / "full.rst7", coords, velocities=coords * 0.1, title="")
+    bare = _write_rst7(tmp_path / "bare.rst7", coords, title="")
+    assert rst7_has_velocities(full)
+    assert not rst7_has_velocities(bare)
+
+
+def test_box_is_read_under_a_blank_title(tmp_path):
+    coords = np.arange(18, dtype=float).reshape(6, 3)
+    box = [30.0, 31.0, 32.0, 90.0, 90.0, 90.0]
+    path = _write_rst7(tmp_path / "boxed.rst7", coords, velocities=coords * 0.1, box=box, title="")
+    assert np.allclose(read_rst7_box(path), box)
+    assert rst7_has_velocities(path, has_box=True)
 
 
 def test_detector_survives_a_malformed_file(tmp_path):

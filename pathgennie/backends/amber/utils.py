@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +58,18 @@ def read_rst7_coords(path: str | Path) -> np.ndarray:
     return np.asarray(values[: natom * 3], dtype=float).reshape(natom, 3)
 
 
+def _rst7_lines(path: str | Path) -> list[str]:
+    """Title line, atom-count line, then the non-blank data lines of an ASCII rst7.
+
+    The title is kept even when it is blank: sander copies its input's title,
+    so a run started from a blank-titled rst7 writes blank-titled restarts.
+    Dropping that line moved the atom count onto a coordinate line, and every
+    tau2 runner drew fresh velocities instead of continuing them.
+    """
+    raw = Path(path).read_text().splitlines()
+    return raw[:2] + [ln for ln in raw[2:] if ln.strip()]
+
+
 def rst7_has_velocities(path: str | Path, *, has_box: bool = False) -> bool:
     """Does this ASCII rst7 carry a velocity block?
 
@@ -69,7 +82,7 @@ def rst7_has_velocities(path: str | Path, *, has_box: bool = False) -> bool:
     ``has_box`` disambiguates the case where a single trailing line could be
     either a box or a one-line velocity block (systems of one or two atoms).
     """
-    lines = [ln for ln in Path(path).read_text().splitlines() if ln.strip()]
+    lines = _rst7_lines(path)
     if len(lines) < 2:
         return False
     try:
@@ -87,7 +100,7 @@ def read_rst7_box(path: str | Path) -> "np.ndarray | None":
     Distinguished from a velocity block by position and width: the box is the
     final line and carries exactly six values.
     """
-    lines = [ln for ln in Path(path).read_text().splitlines() if ln.strip()]
+    lines = _rst7_lines(path)
     if len(lines) < 3:
         return None
     try:
@@ -407,8 +420,12 @@ def write_trajectory(
     *dt* (picoseconds between saved frames) is forwarded to
     :func:`write_native_trajectory` for binary formats.  PDB MODEL records
     have no standard per-frame time field, so *dt* is a no-op for ``.pdb``.
+    A path with no frames (no segment was ever accepted) is not written; a warning says so.
     """
 
+    if np.asarray(frames).size == 0:
+        warnings.warn(f"no frames to write; {path} not written", RuntimeWarning, stacklevel=2)
+        return
     if path.suffix.lower() == ".pdb":
         write_multimodel_pdb(path, topology_info, frames)
     else:

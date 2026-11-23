@@ -163,6 +163,27 @@ def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
         if b.shape == (3,) and np.all(b > 0.0):
             topology_info["box_lengths"] = b
 
+    # Optional per-segment adaptive QM solvent (md.adaptive_qm). Atom numbers in the config are
+    # 1-based, like every other atom number an Amber user writes; residues are 1-based too.
+    qm_region, qm_log = None, None
+    adaptive_cfg = md_cfg.get("adaptive_qm")
+    if adaptive_cfg:
+        from .adaptive_qm import AdaptiveQMRegion
+        qm_region = AdaptiveQMRegion.from_topology(
+            topology_info,
+            core_residues=[int(r) for r in adaptive_cfg["core_residues"]],
+            centre_atoms=[int(a) - 1 for a in adaptive_cfg["centre_atoms"]],
+            n_solvent=int(adaptive_cfg["n_solvent"]),
+            solvent_resname=adaptive_cfg.get("solvent_resname", "WAT"),
+            hysteresis=float(adaptive_cfg.get("hysteresis", 0.3)),
+            guard_cutoff=float(adaptive_cfg.get("guard_cutoff", 1.3)),
+        )
+        if adaptive_cfg.get("log", True):
+            qm_log = output_dir / "qm_selection.log"
+        first = qm_region.select(read_rst7_coords(initial_restart), box=box)
+        print(f"Adaptive QM: {len(first)} residues / {qm_region.n_atoms(first)} atoms "
+              f"at the start ({qm_region.mask(first)})")
+
     engine = CoreAmberEngine(
         topology=topology,
         executable=executable,
@@ -173,6 +194,8 @@ def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
         extra_mdin_text=extra_mdin_text,
         command_prefix=command_prefix,
         env_overrides=env_overrides,
+        qm_region=qm_region,
+        qm_selection_log=qm_log,
     )
 
     # Device pool: `devices` lists GPU indices; falls back to legacy tau1_workers.
@@ -213,6 +236,9 @@ def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
         save_subframes=pg_cfg.get("save_subframes", False),
         subframe_stride=pg_cfg.get("subframe_stride", 1),
         checkpoint_freq=pg_cfg.get("checkpoint_freq", 0),
+        selection=pg_cfg.get("selection", "softmax"),
+        accept_batch=int(pg_cfg.get("accept_batch", 0)),
+        trial_log=pg_cfg.get("trial_log"),
     )
 
     downstream = pg_cfg.get("downstream")
@@ -243,8 +269,8 @@ def run(case_dir: Path | str, config_name: str = "input.yaml") -> None:
         trajectory_dt = pg_cfg.get("subframe_stride", 1) * timestep_ps
     else:
         trajectory_dt = save_freq * (pg_cfg["tau1_steps"] + pg_cfg["tau2_steps"]) * timestep_ps
+    write_metrics_csv(metrics_path, metrics)       # first, so the metrics survive any trajectory problem
     write_trajectory(trajectory_path, topology_info, traj, dt=trajectory_dt)
-    write_metrics_csv(metrics_path, metrics)
 
     # Optional downstream enhanced-sampling stage (uses scratch, so before cleanup).
     if downstream:

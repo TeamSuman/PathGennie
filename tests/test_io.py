@@ -216,3 +216,18 @@ def test_prmtop_readers_accept_str_paths():
     from_str = parse_prmtop(str(prmtop))
     assert from_str["atom_names"] == from_path["atom_names"]
     assert len(read_prmtop_flag(str(prmtop), "ATOM_NAME")) > 0
+
+
+def test_write_trajectory_with_no_frames_warns_instead_of_raising(tmp_path):
+    """A run in which no segment was ever accepted has an empty path; writing it must not crash the run's
+    final bookkeeping (the metrics are written next to it)."""
+    import warnings
+    import numpy as np
+    from pathgennie.backends.amber.utils import write_trajectory
+
+    out = tmp_path / "path.nc"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        write_trajectory(out, {}, np.zeros((0, 6, 3)), dt=0.001)
+    assert not out.exists()
+    assert any("no frames" in str(w.message) for w in caught)
