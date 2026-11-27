@@ -103,7 +103,7 @@ class CommittorModel:
     def predict(self, features: np.ndarray) -> np.ndarray:
         """Committor ``q`` in [0, 1] for raw features."""
         z = self.logit(features)
-        return 1.0 / (1.0 + np.exp(-z))
+        return np.exp(-np.logaddexp(0.0, -z))
 
     def save(self, path: "str | Path") -> None:
         torch.save(dict(state=self.net.state_dict(), n_features=self.net.n_features,
@@ -251,12 +251,12 @@ class CommittorEnsemble:
 
     def predict(self, features: np.ndarray):
         z = self.logit(features)
-        return 1.0 / (1.0 + np.exp(-z))
+        return np.exp(-np.logaddexp(0.0, -z))
 
     def std(self, features: np.ndarray):
         """Standard deviation of the members' committors (0 for a single model)."""
         single = np.ndim(features) == 1
-        q = 1.0 / (1.0 + np.exp(-self.member_logits(features)))
+        q = np.exp(-np.logaddexp(0.0, -self.member_logits(features)))
         out = q.std(axis=0)
         return float(out[0]) if single else out
 

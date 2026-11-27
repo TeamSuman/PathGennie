@@ -42,7 +42,7 @@ class CommittorProgress:
 
     def committor(self, coords: np.ndarray) -> float:
         z = float(self.model.logit(np.asarray(self.featurize(coords), dtype=float)))
-        return float(1.0 / (1.0 + np.exp(-z)))
+        return float(np.exp(-np.logaddexp(0.0, -z)))      # overflow-safe sigmoid
 
     def project(self, coords: np.ndarray, cycle: Optional[int] = None) -> np.ndarray:
         """The 1-component "CV" is the regularised log-probability of reaching the target."""
