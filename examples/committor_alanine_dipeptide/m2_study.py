@@ -422,7 +422,7 @@ def stage_analyze(args):
             row["member_rmse_ts"] = [committor_scores(m.predict(features), q_ref)["rmse_transition"]
                                      for m in model.models]
             row["final_loss"] = float(np.mean([m.history[-1] for m in model.models]))
-            print(f"{name:14s} {md_steps:10d}  {row['pearson']:6.3f} {row['rmse']:6.3f}  "
+            print(f"{name:14s} {int(md_steps):10d}  {row['pearson']:6.3f} {row['rmse']:6.3f}  "
                   f"{row['pearson_transition']:6.3f} {row['rmse_transition']:8.3f}  {n_a:7d}/{n_b:<6d}",
                   flush=True)
         summary["protocols"][name] = row
@@ -438,6 +438,51 @@ def stage_analyze(args):
         # Boundary information travels one lag per sweep, so short lags need more sweeps.
         steps = args.train_steps * (4 if lag <= 5 else 1)
         evaluate(f"lag={lag}", lag_data[lag], lag_data[lag].total_steps, steps)
+
+    # Is the failure of short lags a matter of optimisation sweeps? Same data, 8x the steps.
+    if 20 in lag_data and args.long_training:
+        evaluate("lag=20 long", lag_data[20], lag_data[20].total_steps, 8 * args.train_steps)
+
+    # Long swarms whose trials stop at basin entry (the relation is for the stopped process).
+    stop_data = {}
+    for lag in STOP_LAGS:
+        path = out / f"swarms_stop{lag}.h5"
+        if path.exists():
+            stop_data[lag] = SwarmDataset.load(path)
+            evaluate(f"stop<={lag}", stop_data[lag], int(stop_data[lag].attrs["md_steps"]), args.train_steps)
+    if len(stop_data) > 1:
+        evaluate("stop, all", SwarmDataset.concatenate(list(stop_data.values())),
+                 sum(int(d.attrs["md_steps"]) for d in stop_data.values()), args.train_steps)
+    if stop_data:
+        longest_stop = max(stop_data)
+        evaluate(f"disc+stop{longest_stop}", SwarmDataset.concatenate([disc_data, stop_data[longest_stop]]),
+                 int(disc["train_md_steps"]) + int(stop_data[longest_stop].attrs["md_steps"]), args.train_steps)
+
+    # Velocity-refreshed shooting: the fixed point of short-swarm training, measured without a model.
+    if (out / "refreshed.npz").exists():
+        r = np.load(out / "refreshed.npz")
+        qp, n_p = r["q_physical"], r["n_physical"]
+        summary["refreshed"] = {}
+        print("\nvelocity-refreshed chain against the physical committor "
+              f"({len(qp)} transition-region configurations)")
+        print(f"{'refresh (fs)':>12s} {'RMS diff':>9s} {'from noise':>11s} {'mean diff':>10s} {'+-':>6s} {'r':>6s} {'steps/shot':>11s}")
+        for lag in REFRESH_LAGS:
+            if f"n_b_{lag}" not in r:
+                continue
+            c = r[f"n_a_{lag}"] + r[f"n_b_{lag}"]
+            q = r[f"n_b_{lag}"] / np.maximum(c, 1)
+            var = qp * (1 - qp) / n_p + q * (1 - q) / np.maximum(c, 1)
+            row = dict(rms_diff=float(np.sqrt(np.mean((q - qp) ** 2))), rms_noise=float(np.sqrt(np.mean(var))),
+                       mean_diff=float(np.mean(q - qp)), mean_diff_se=float(np.sqrt(var.sum()) / len(qp)),
+                       pearson=float(np.corrcoef(q, qp)[0, 1]),
+                       steps_per_shot=float(r[f"steps_{lag}"].sum() / (c + r[f"n_open_{lag}"]).sum()),
+                       uncommitted=int(r[f"n_open_{lag}"].sum()))
+            summary["refreshed"][lag] = row
+            print(f"{lag:12d} {row['rms_diff']:9.3f} {row['rms_noise']:11.3f} {row['mean_diff']:+10.3f} "
+                  f"{row['mean_diff_se']:6.3f} {row['pearson']:6.3f} {row['steps_per_shot']:11.0f}")
+        physical = ref["steps"].sum() / (ref["n_a"] + ref["n_b"] + ref["n_open"]).sum()
+        summary["refreshed"]["physical_steps_per_shot"] = float(physical)
+        print(f"{'physical':>12s} {'':9s} {'':11s} {'':10s} {'':6s} {'':6s} {physical:11.0f}")
 
     # Self-consistency of one fixed function at every lag: for the model trained at
     # the longest lag, how far is the swarm average of q at the endpoints from q at
@@ -501,6 +546,7 @@ def main():
     parser.add_argument("--starts", type=int, default=400, help="fixed starts for the lag scan")
     parser.add_argument("--models", type=int, default=4, help="ensemble size")
     parser.add_argument("--train-steps", type=int, default=10_000)
+    parser.add_argument("--long-training", action="store_true", help="also train lag=20 with 8x the steps")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     {"discover": stage_discover, "reference": stage_reference, "enrich": stage_enrich,

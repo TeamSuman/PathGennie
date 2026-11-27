@@ -122,3 +122,27 @@ def test_run_swarms_is_reproducible_and_leaves_start_alone():
 
     np.testing.assert_array_equal(swarm(1), swarm(1))
     assert not np.array_equal(swarm(1), swarm(2))
+
+
+def test_run_swarms_can_stop_trials_at_basin_entry():
+    """Inspected only at their end, long trials pass through a basin and leave
+    again; with check_every they are stopped inside it and labelled."""
+    def swarm(check_every):
+        engine = ToyLangevinEngine(dt=0.005)
+        start = engine.create_state(A + np.array([0.45, 0.0]))      # just outside basin A
+        rec = SwarmRecorder(featurize=_xy, basins=BASINS)
+        run_swarms(engine, [start], rec, n_trials=40, n_steps=4000, cv_fn=_xy, seed=3,
+                   check_every=check_every)
+        assert len(engine._cache) == 1
+        return rec
+
+    stopped = swarm(5)
+    data = stopped.dataset()
+    committed = (data.end_label >= 0).mean()
+    assert committed > 0.95                                         # nearly every trial was caught
+    assert stopped.attrs["md_steps"] < 0.5 * 40 * 4000              # ...and stopped early
+    assert BASINS.label(data.ends[0, 0]) == data.end_label[0, 0]
+
+    unstopped = swarm(None)
+    assert unstopped.attrs["md_steps"] == 40 * 4000
+    assert (unstopped.dataset().end_label >= 0).mean() < committed

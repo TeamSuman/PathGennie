@@ -97,3 +97,17 @@ def test_shooting_matches_exact_committor():
         assert abs(res.committor - ref(np.array([point]))[0]) < 4.0 * res.stderr
         np.testing.assert_allclose(_xy(engine.get_coords(start)), point)   # start untouched
         assert len(engine._cache) == live                                  # no leaked handles
+
+
+def test_velocity_refresh_changes_nothing_for_overdamped_dynamics():
+    """The toy engine has no velocities, so the refreshed chain *is* the dynamics:
+    the option must not alter the estimate (it only changes real-MD engines)."""
+    basins = BasinPair(SphereBasin(A, R), SphereBasin(B, R))
+
+    def shoot(refresh):
+        engine = ToyLangevinEngine(dt=0.005, kT=1.0)
+        return shooting_committor(engine, engine.create_state([0.0, 0.0]), basins, _xy,
+                                  n_shots=60, check_every=5, seed=9, refresh_velocities=refresh)
+
+    plain, refreshed = shoot(False), shoot(True)
+    assert (plain.n_a, plain.n_b, plain.total_steps) == (refreshed.n_a, refreshed.n_b, refreshed.total_steps)
