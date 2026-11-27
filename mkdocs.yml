@@ -26,6 +26,7 @@ nav:
       - HPC Review & Roadmap: HPC_REVIEW.md
   - Capabilities:
       - Data-Driven CVs (SPIB): data-driven-cv.md
+      - Committor Learning: committor.md
       - Path CVs (s, z): path-cv.md
       - Path Refinement: path-refinement.md
       - QM/MM Reactive Workflow: qmmm-workflow.md

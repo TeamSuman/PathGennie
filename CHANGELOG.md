@@ -7,6 +7,23 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Committor learning from swarms** (`pathgennie.committor`, `docs/committor.md`).
+  The trials of one cycle are independent unbiased continuations of the anchor, which
+  is the data the committor self-consistency relation needs, so discovery runs can now
+  train a committor network with no bias force and no gradient passed to the engine.
+  - `SwarmRecorder` (driver option `swarm_recorder=`) keeps the endpoint of *every*
+    trial with basin labels and selection probabilities; `SwarmDataset` saves/loads
+    HDF5. Recording does not change a seeded run. `run_swarms` adds selection-free
+    swarms at chosen configurations.
+  - `BasinPair` with `SphereBasin` (optionally periodic), `BoxBasin`, `CallableBasin`.
+  - `shooting_committor`: brute-force committor for any engine, with standard error
+    and cost. `reference.grid_committor`: exact committor on a 2-D grid (SciPy).
+  - `train.train_committor` (PyTorch): self-consistency loss with a moving-average
+    target; `committor_scores` reports correlation and RMSE overall and in the
+    transition region.
+  - `benchmarks/committor_toy.py` runs milestones M0/M1 on Wolfe-Quapp: transition-
+    region correlation 0.996 and RMSE 0.044 against the exact committor from 8
+    discovery runs each way. Not yet tested on a molecular system.
 - **Serial trial scheme** (`pathgennie.scheme: serial`). The probe-until-accepted
   cycle of the original PathGennie (0.0.0) is back as an option next to the default
   parallel swarm: samplers are run from the anchor until one beats the record (best

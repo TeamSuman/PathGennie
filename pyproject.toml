@@ -52,6 +52,7 @@ dev = [
 ]
 ml = [
   "torch",
+  "scipy",
 ]
 openmm = [
   "OpenMM",

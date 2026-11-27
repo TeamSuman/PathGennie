@@ -127,6 +127,7 @@ class PathGennieDriver:
         on_max_try: str = "best",
         min_gain: float = 0.0,
         cycle_logger=None,
+        swarm_recorder=None,
     ):
         if scheme not in ("parallel", "serial"):
             raise ValueError(f"scheme must be 'parallel' or 'serial', not {scheme!r}")
@@ -157,6 +158,9 @@ class PathGennieDriver:
         self.on_max_try = on_max_try
         self.min_gain = float(min_gain)
         self.cycle_logger = cycle_logger
+        # Optional pathgennie.committor.SwarmRecorder: keeps the endpoint of *every*
+        # trial (not only the selected one), the data committor learning needs.
+        self.swarm_recorder = swarm_recorder
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -329,7 +333,9 @@ class PathGennieDriver:
                               chosen=(t is not None and t.index == trials[chosen_idx].index))
                     for i, t in enumerate(all_trials)]
             info = dict(n_trials=max_trial, n_failed=max_trial - len(trials), threshold=np.nan,
-                        chosen_prob=float(probs[chosen_idx]), accepted=True, censored=False)
+                        chosen_prob=float(probs[chosen_idx]), accepted=True, censored=False,
+                        all_trials=list(trials), all_probs=probs,
+                        all_chosen=[i == chosen_idx for i in range(len(trials))])
             return trials, chosen_idx, rows, info
 
         def serial_swarm(threshold: float):
@@ -346,6 +352,7 @@ class PathGennieDriver:
             accepted = best = None
             n_eval = n_failed = 0
             rows = []
+            evaluated: List[TrialResult] = []
             batch = 0
             while n_eval < self.max_try and accepted is None:
                 m = min(self.batch_size, self.max_try - n_eval)
@@ -363,6 +370,7 @@ class PathGennieDriver:
                         continue
                     hit = (not after) and t.metric > threshold + self.min_gain
                     rows.append(trial_row(t_idx, t, batch, chosen=hit, after=after))
+                    evaluated.append(t)
                     if hit:
                         accepted = t
                     if best is None or t.metric > best.metric:
@@ -389,7 +397,9 @@ class PathGennieDriver:
                 trials.append(best)
             chosen_idx = None if chosen is None else next(i for i, t in enumerate(trials) if t is chosen)
             info = dict(n_trials=n_eval, n_failed=n_failed, threshold=threshold, chosen_prob=np.nan,
-                        accepted=not censored, censored=censored)
+                        accepted=not censored, censored=censored,
+                        all_trials=evaluated, all_probs=None,
+                        all_chosen=[t is chosen for t in evaluated])
             return trials, chosen_idx, rows, info
 
         # The record is the highest committed metric so far (the serial scheme's
@@ -409,6 +419,18 @@ class PathGennieDriver:
                 n_censored += int(info["censored"])
             n_quarantined += info["n_failed"]
             tau2_metric = np.nan
+
+            if self.swarm_recorder is not None:
+                # Every evaluated trial is an independent unbiased continuation of the
+                # anchor. The coordinates are plain arrays, so this is valid although
+                # most of the trial handles have been (or are about to be) released.
+                self.swarm_recorder.record_swarm(
+                    cycle=cycle, lag_steps=tau1,
+                    start_coords=anchor_coords, start_cv=anchor_cv,
+                    end_coords=[t.coords for t in info["all_trials"]],
+                    end_cvs=[t.cv for t in info["all_trials"]],
+                    probs=info["all_probs"], chosen=info["all_chosen"],
+                )
 
             if chosen_idx is None:
                 # Serial scheme, max_try reached, on_max_try="stay": keep the anchor.
@@ -440,6 +462,9 @@ class PathGennieDriver:
                     tau2_coords = frame_coords(self.engine, tau2_handle)
                     tau2_cv, tau2_metric = self._evaluate(tau2_coords, cycle=cycle)
                     tau2_failed = False
+                    if self.swarm_recorder is not None:
+                        self.swarm_recorder.record_runner(
+                            cycle=cycle, start_coords=chosen.coords, end_coords=tau2_coords)
                 except Exception as exc:  # noqa: BLE001 - one runner, not the run
                     if tau2_handle is not None:
                         try:
