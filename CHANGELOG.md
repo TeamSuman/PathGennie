@@ -24,6 +24,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `benchmarks/committor_toy.py` runs milestones M0/M1 on Wolfe-Quapp: transition-
     region correlation 0.996 and RMSE 0.044 against the exact committor from 8
     discovery runs each way. Not yet tested on a molecular system.
+  - **Closed loop** (`committor.loop.CommittorLoop`): the learned committor steers the
+    next swarms. `CommittorProgress` scores trials by the log-probability of reaching
+    the target; the new driver option `selection="boltzmann"` selects with unscaled
+    weights `exp(metric / sigma)`, so trials are resampled in proportion to the
+    committor at their endpoints. Restarts are spread over the committor estimate and
+    an ensemble of networks (`train_ensemble`) gives a spread. On Wolfe-Quapp
+    (`benchmarks/committor_loop_toy.py`), bootstrapped with the x coordinate alone,
+    10 of 10 seeds resolve both reaction channels (transition-region RMSE 0.033 median,
+    0.054 worst) with about half the MD of fixed-CV discovery plus offline training.
 - **Serial trial scheme** (`pathgennie.scheme: serial`). The probe-until-accepted
   cycle of the original PathGennie (0.0.0) is back as an option next to the default
   parallel swarm: samplers are run from the anchor until one beats the record (best

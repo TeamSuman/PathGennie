@@ -1,9 +1,9 @@
 # Committor learning from swarms
 
 !!! note "Status"
-    Milestones **M0** and **M1** below are implemented and validated on the toy
-    Wolfe-Quapp potential. Everything from M2 on is planned work; nothing here has
-    been run on a molecular system yet.
+    Milestones **M0**, **M1** and **M3** below are implemented and validated on the
+    toy Wolfe-Quapp potential. The rest is planned work; nothing here has been run
+    on a molecular system yet.
 
 ## The idea
 
@@ -69,6 +69,35 @@ s = model.logit(features)                        # use this as a progress coordi
 * `run_swarms(engine, handles, recorder, n_trials=..., n_steps=...)` adds swarms at
   configurations of your choice, without selection.
 
+### Closed loop
+
+```python
+from pathgennie.committor.loop import CommittorLoop, LoopConfig
+
+loop = CommittorLoop(
+    engine, basins, cv_fn, featurize,
+    start_a=handle_in_A, start_b=handle_in_B,
+    bootstrap_progress=lambda target: my_geometric_progress(target),   # "A" or "B"
+    config=LoopConfig(tau1=20, tau2=40, n_trials=16, episodes_per_round=16),
+)
+loop.run(8)                 # bootstrap, then 8 rounds
+loop.model                  # CommittorEnsemble: .predict, .logit, .std
+loop.recorder.save("swarms.h5")
+```
+
+Each round restarts from visited configurations spread evenly over the current
+committor estimate, runs short episodes until a basin is entered, and refits. An
+episode targets B with probability `q` (else A); its progress metric is the
+log-probability of reaching that target and trials are selected with the driver's new
+`selection="boltzmann"` weights, i.e. with probability proportional to the committor at
+their endpoints (`sigma = 1`). In the limit of many trials this is importance
+resampling of the transition kernel conditioned on reaching the target — the same
+conditioned process that control-based methods approximate with a force, obtained here
+by selection alone.
+
+The bootstrap progress variable only has to move the system out of each basin; it
+does not need to reach the other side (see the results below).
+
 ### Validation tools
 
 ```python
@@ -122,6 +151,51 @@ What the table also says:
   practical message stands: the fs-scale `discovery` profile is too short to learn
   from, and learning runs should use longer swarms or add `run_swarms` data.
 
+### M3 — closed loop from a poor CV
+
+Reproduce with `python benchmarks/committor_loop_toy.py` (about 30 minutes on CPU).
+
+The loop was bootstrapped with the **x coordinate alone**, which cannot distinguish the
+product from an off-path minimum, and scored on a grid over the whole thermally
+relevant landscape: 450 transition-region points, 279 in the lower channel and 171 in
+the upper one. This is a harder test than the M1 table, which scored only along the
+tube the runs had visited. Eight rounds, about 260,000 MD steps in total (trials and
+runners).
+
+| | seeds | r (TS) median (worst) | RMSE (TS) median (worst) | both channels | MD steps to RMSE (TS) < 0.10 |
+|---|---|---|---|---|---|
+| **closed loop, x-only bootstrap** | 10 | 0.998 (0.995) | 0.033 (0.054) | 10 / 10 | 110,000 |
+| good-CV bootstrap | 5 | 0.998 (0.997) | 0.028 (0.032) | 5 / 5 | 96,000 |
+| no ensemble-guided restarts | 5 | 0.997 (0.990) | 0.039 (0.064) | 5 / 5 | 43,000 |
+| single network | 5 | 0.995 (0.988) | 0.040 (0.078) | 4 / 5 | 86,000 |
+
+Fixed good CV plus offline training (the M1 protocol, ensemble of 4), on the same grid:
+
+| discovery runs (each way) | MD steps | r (TS) | RMSE (TS) | lower channel | upper channel |
+|---|---|---|---|---|---|
+| 2 | 146,520 | 0.914 | 0.117 | 0.034 | 0.172 |
+| 4 | 227,400 | 0.991 | 0.061 | 0.051 | 0.068 |
+| 8 | 507,720 | 0.998 | 0.030 | 0.034 | 0.018 |
+
+All three gates pass: (a) every seed reaches r (TS) > 0.95 and RMSE (TS) < 0.10 from the
+poor CV; (b) the loop needs about half the MD of the fixed-CV protocol, both to cross
+RMSE (TS) = 0.10 (110,000 against between 147,000 and 227,000 steps) and to reach
+RMSE ≈ 0.03 (260,000 against 508,000); (c) both channels are resolved in 10 of 10 seeds.
+
+What the ablations do and do not show:
+
+* **The starting CV hardly matters.** A good bootstrap CV gives nearly the same result
+  as the x-only one. The loop does not inherit the weakness of the CV it starts from.
+* **The ensemble helps robustness.** A single network is worse in the worst case and
+  missed a channel in one of five seeds.
+* **Restarts guided by ensemble disagreement are not shown to help.** Without them the
+  final accuracy is slightly worse, but the 0.10 threshold was crossed sooner in these
+  five seeds. With this few seeds that is inconclusive; the feature stays on by default
+  but should not be claimed as a contribution until tested on a harder system.
+* A bug this benchmark caught: a bootstrap episode can leave its basin on the runner
+  and end without one trial endpoint inside it, leaving no boundary data on that side.
+  Bootstrap now launches further episodes until both basins are represented.
+
 ## Known limits
 
 * **Velocities.** Trials start with fresh Maxwell-Boltzmann velocities and the network
@@ -139,10 +213,14 @@ What the table also says:
 * **Serial scheme.** Probing stops at the first success, so the number of probes
   depends on their outcomes and the endpoint average is slightly biased. Use the
   default parallel scheme for learning runs.
-* **Single network.** Accuracy in the transition region varies between network
-  initialisations at small data (worst-case RMSE (TS) 0.114 against a mean of 0.091 at
-  4 runs). An ensemble, which would also give an uncertainty for steering, is part
-  of M3.
+* **Exploration is not solved.** On the toy both channels are found because thermal
+  motion at kT = 1 reaches them. Nothing in the loop yet drives it toward a channel
+  that is many kT away from everything visited; that needs the tempering or
+  state-discovery work planned after M4.
+* **Episodes are short here by construction.** At unit selection temperature an
+  episode lasts about as long as an unbiased commitment (a few cycles on the toy). For
+  a molecular system with ns commitment times `sigma < 1` will be needed, and what that
+  does to the learned committor is untested.
 
 ## Milestones
 
@@ -155,7 +233,8 @@ committors computed with the tool from M0.
 | **M0** | Ground truth: exact grid committor, shooting committor, basin and swarm-record API | Wolfe-Quapp | shooting within 4 standard errors of exact at every test point | **passed** |
 | **M1** | Offline committor from recorded discovery swarms | Wolfe-Quapp | r (TS) > 0.95 and RMSE (TS) < 0.10 at 8 runs each way | **passed** |
 | **M2** | Same on real MD; resolve the velocity/lag question; internal-coordinate features; YAML wiring for OpenMM/AMBER/GROMACS | alanine dipeptide, vacuum, C7eq ↔ C7ax | r > 0.9 and RMSE (TS) < 0.15 against shooting at ≥ 200 configurations, using less MD than shooting them directly; report accuracy against lag from 2 fs to 1 ps | next |
-| **M3** | Closed loop: `logit q` as the progress variable, consistent selection weights `q(y)/q(x)`, target B with probability `q` else A, multi-anchor buffer with restarts stratified in `q`, network ensemble for uncertainty | Wolfe-Quapp, then alanine dipeptide | (a) started from a deliberately poor CV, reaches the M1/M2 accuracy; (b) needs fewer MD steps than fixed-CV discovery plus offline training; (c) finds both Wolfe-Quapp channels in ≥ 9 of 10 seeds | |
+| **M3** | Closed loop: log-committor as the progress variable, selection weights proportional to `q`, target B with probability `q` else A, restarts stratified in `q`, network ensemble | Wolfe-Quapp | (a) started from a deliberately poor CV, r (TS) > 0.95 and RMSE (TS) < 0.10 over the whole landscape; (b) fewer MD steps than fixed-CV discovery plus offline training; (c) both channels in ≥ 9 of 10 seeds | **passed** (toy) |
+| **M3b** | The same loop on real MD | alanine dipeptide | reaches the M2 accuracy from a single-dihedral CV with less MD than M2 | after M2 |
 | **M4** | Closed loop on a folding and an unbinding problem; first HPC runs | CLN025, OAMe-G2 | r > 0.9 against shooting at ≥ 300 configurations each; fewer cycles to first transition than the hand-picked CV | HPC |
 | **M5** | High-dimensional path refinement: path nodes as conditional means of features in `q`-bins, per channel; path CVs `s`, `z` in any dimension | Wolfe-Quapp (both channels), alanine dipeptide, CLN025 | toy: nodes within 0.1 of the minimum-free-energy path of each channel; molecules: `s` monotonic in shooting `q` (Spearman > 0.95) | |
 | **M6** | Export: TorchScript CV usable from PLUMED; `q`-interfaces for TIS/RETIS; `q`-bins for both weighted-ensemble codes; umbrella/OPES on `logit q` | alanine dipeptide | free-energy barrier along `logit q` within 0.5 kcal/mol of a reference; exported model reproduces Python values to 1e-5 | |
