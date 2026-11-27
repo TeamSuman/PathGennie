@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["selection_probs", "softmax_select"]
+__all__ = ["selection_probs", "boltzmann_probs", "softmax_select"]
 
 
 def selection_probs(metrics: np.ndarray, sigma: float) -> np.ndarray:
@@ -65,3 +65,30 @@ def softmax_select(metrics: np.ndarray, sigma: float, rng: np.random.Generator) 
 
     probs = selection_probs(metrics, sigma)
     return int(rng.choice(probs.size, p=probs))
+
+
+def boltzmann_probs(metrics: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    """Selection probabilities ``p_i ~ exp(metric_i / sigma)`` with no rescaling.
+
+    :func:`selection_probs` min-max scales the batch first, so the weight a trial
+    receives depends on which other trials happen to be in the batch, and the
+    same metric difference is amplified or damped from cycle to cycle. Here the
+    weight depends on the trial's own metric only.
+
+    That matters when the metric is the logarithm of a committor estimate: with
+    ``metric = log q`` and ``sigma = 1`` the swarm is resampled with
+    ``p_i ~ q(y_i)``, which is importance resampling of the transition kernel
+    conditioned on reaching the product state (the Doob transform
+    ``P(x -> y) q(y) / q(x)``), in the limit of many trials. ``sigma < 1``
+    sharpens the selection, ``sigma > 1`` flattens it toward unbiased dynamics.
+    """
+
+    metrics = np.asarray(metrics, dtype=float).ravel()
+    if metrics.size == 0:
+        raise ValueError("metrics must be non-empty")
+    if not np.all(np.isfinite(metrics)):
+        raise ValueError("metrics contains non-finite values")
+    if sigma <= 0.0:
+        raise ValueError("sigma must be > 0")
+    weights = np.exp((metrics - metrics.max()) / sigma)
+    return weights / weights.sum()

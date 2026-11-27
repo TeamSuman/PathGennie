@@ -58,7 +58,7 @@ from .box import FrameCoords, call_with_box, create_handle, frame_coords
 from .engine import Engine, Handle
 from .parallel import ParallelExecutor, SerialExecutor
 from .progress import ProgressVariable
-from .selection import selection_probs
+from .selection import boltzmann_probs, selection_probs
 
 __all__ = ["PathGennieDriver", "TrialResult", "scheme_options"]
 
@@ -128,11 +128,14 @@ class PathGennieDriver:
         min_gain: float = 0.0,
         cycle_logger=None,
         swarm_recorder=None,
+        selection: str = "softmax",
     ):
         if scheme not in ("parallel", "serial"):
             raise ValueError(f"scheme must be 'parallel' or 'serial', not {scheme!r}")
         if accept not in ("record", "anchor"):
             raise ValueError(f"accept must be 'record' or 'anchor', not {accept!r}")
+        if selection not in ("softmax", "boltzmann"):
+            raise ValueError(f"selection must be 'softmax' or 'boltzmann', not {selection!r}")
         if on_max_try not in ("best", "stay"):
             raise ValueError(f"on_max_try must be 'best' or 'stay', not {on_max_try!r}")
         if int(max_try) < 1:
@@ -161,6 +164,10 @@ class PathGennieDriver:
         # Optional pathgennie.committor.SwarmRecorder: keeps the endpoint of *every*
         # trial (not only the selected one), the data committor learning needs.
         self.swarm_recorder = swarm_recorder
+        # Parallel scheme only. "softmax": min-max scaled metrics (the published
+        # scheme). "boltzmann": p ~ exp(metric / sigma), unscaled -- the consistent
+        # choice when the metric is a log-committor (see selection.boltzmann_probs).
+        self.selection = selection
 
     def _seed(self) -> int:
         return int(self.rng.integers(1, 2_147_483_647))
@@ -326,7 +333,10 @@ class PathGennieDriver:
                 raise all_failed(max_trial)
             metrics = np.array([t.metric for t in trials], dtype=float)
             # Same draw as softmax_select (one rng.choice), so seeded runs are unchanged.
-            probs = selection_probs(metrics, self.sigma)
+            if self.selection == "boltzmann":
+                probs = boltzmann_probs(metrics, self.sigma)
+            else:
+                probs = selection_probs(metrics, self.sigma)
             chosen_idx = int(self.rng.choice(probs.size, p=probs))
             prob_of = {t.index: p for t, p in zip(trials, probs)}
             rows = [trial_row(i, t, prob=prob_of.get(i, np.nan),
@@ -625,6 +635,9 @@ class PathGennieDriver:
             storage.close()
         if self.cycle_logger is not None:
             self.cycle_logger.close()
+        # The final anchor's handle, so a caller that runs many short episodes can
+        # release it (the driver itself never releases the anchor it ends on).
+        self.last_anchor = anchor
 
         if collect_seeds:
             return np.asarray(trajectory), np.asarray(metric_history), seed_handles

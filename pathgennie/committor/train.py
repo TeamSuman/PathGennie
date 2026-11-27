@@ -53,7 +53,8 @@ from torch import nn
 from .basins import LABEL_A, LABEL_B, LABEL_NONE
 from .records import SwarmDataset
 
-__all__ = ["CommittorNet", "CommittorModel", "train_committor", "committor_scores"]
+__all__ = ["CommittorNet", "CommittorModel", "CommittorEnsemble", "train_committor",
+           "train_ensemble", "committor_scores"]
 
 
 class CommittorNet(nn.Module):
@@ -221,6 +222,55 @@ def train_committor(
     target_net.eval()
     return CommittorModel(net=target_net, feature_mean=mean, feature_std=std,
                           history=(list(init.history) if init is not None else []) + history)
+
+
+class CommittorEnsemble:
+    """Several networks trained on the same data from different initialisations.
+
+    The prediction is the sigmoid of the mean logit. The spread between members
+    (:meth:`std`) is large where the data do not pin the committor down -- off
+    the sampled tube, or in a channel only a few swarms have seen -- which makes
+    it a cheap signal for where to launch the next swarms.
+    """
+
+    def __init__(self, models: Sequence[CommittorModel]):
+        if not models:
+            raise ValueError("an ensemble needs at least one model")
+        self.models = list(models)
+
+    def __len__(self) -> int:
+        return len(self.models)
+
+    def member_logits(self, features: np.ndarray) -> np.ndarray:
+        return np.stack([np.atleast_1d(m.logit(features)) for m in self.models])
+
+    def logit(self, features: np.ndarray):
+        single = np.ndim(features) == 1
+        out = self.member_logits(features).mean(axis=0)
+        return float(out[0]) if single else out
+
+    def predict(self, features: np.ndarray):
+        z = self.logit(features)
+        return 1.0 / (1.0 + np.exp(-z))
+
+    def std(self, features: np.ndarray):
+        """Standard deviation of the members' committors (0 for a single model)."""
+        single = np.ndim(features) == 1
+        q = 1.0 / (1.0 + np.exp(-self.member_logits(features)))
+        out = q.std(axis=0)
+        return float(out[0]) if single else out
+
+
+def train_ensemble(dataset: SwarmDataset, n_models: int = 4, *, seed: int = 0,
+                   init: Optional[CommittorEnsemble] = None, **kwargs) -> CommittorEnsemble:
+    """Train ``n_models`` networks; ``init`` warm-starts each from its predecessor."""
+    if init is not None and len(init) != n_models:
+        raise ValueError("init must have n_models members")
+    return CommittorEnsemble([
+        train_committor(dataset, seed=seed + 7919 * k,
+                        init=None if init is None else init.models[k], **kwargs)
+        for k in range(int(n_models))
+    ])
 
 
 def committor_scores(predicted: np.ndarray, reference: np.ndarray,

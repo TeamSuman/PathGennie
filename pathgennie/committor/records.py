@@ -214,7 +214,10 @@ class SwarmRecorder:
             chosen=np.zeros(k, dtype=bool) if chosen is None else np.asarray(chosen, dtype=bool),
         ))
         if self.keep_coords:
-            self.coords_starts.append(np.array(start_coords, dtype=float))
+            # .copy() (not np.array) so a FrameCoords keeps its periodic box: these
+            # frames are restart points, and under NPT each has its own box.
+            self.coords_starts.append(start_coords.copy() if isinstance(start_coords, np.ndarray)
+                                      else np.array(start_coords, dtype=float))
 
     def record_runner(self, *, cycle: int, start_coords: np.ndarray, end_coords: np.ndarray) -> None:
         """Record the committed tau2 runner (path analysis only; not a training sample)."""
