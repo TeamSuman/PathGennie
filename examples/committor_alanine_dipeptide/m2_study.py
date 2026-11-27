@@ -2,6 +2,7 @@
 
     python m2_study.py discover  --out OUT     # PathGennie runs both ways (train + test pools)
     python m2_study.py reference --out OUT     # shooting committors at held-out configurations
+    python m2_study.py enrich    --out OUT     # more held-out configurations in the transition window
     python m2_study.py swarms    --out OUT     # selection-free swarms at fixed starts, several lags
     python m2_study.py analyze   --out OUT     # train, score, write OUT/m2_summary.json
 
@@ -203,6 +204,60 @@ def stage_reference(args):
           f"{int(state['steps'].sum())} MD steps; q in (0.05, 0.95): {int(((q > 0.05) & (q < 0.95)).sum())}")
 
 
+def stage_enrich(args):
+    """More held-out configurations from a phi window, all at ``--shots2`` shots.
+
+    A uniform draw from the discovery pool lands mostly next to the basins, where
+    the committor is trivially 0 or 1. This adds configurations from the phi
+    range in which the first pass found mixed outcomes. The window is a
+    geometric criterion -- it does not look at any shooting result of the
+    configurations it selects -- so their estimates are unbiased.
+    """
+    out = args.out
+    disc = np.load(out / "discover.npz")
+    first = np.load(out / "reference.npz")
+    path = out / "reference_enriched.npz"
+    outside = np.flatnonzero(disc["test_start_label"] == -1)
+    rng = np.random.default_rng(12345)
+    already = set(np.sort(rng.choice(outside, size=min(args.configs, outside.size), replace=False)).tolist())
+    lo, hi = args.phi_window
+    phi = np.array([adp.phi_psi(c)[0] for c in disc["test_coords"][outside]])
+    candidates = [int(i) for i, p in zip(outside, phi) if lo <= p <= hi and int(i) not in already]
+    rng = np.random.default_rng(4242)
+    chosen = np.sort(rng.choice(candidates, size=min(args.enrich, len(candidates)), replace=False))
+    coords = disc["test_coords"][chosen]
+    n = len(coords)
+    print(f"enrich: {len(candidates)} unused held-out configurations with phi in [{lo}, {hi}]; shooting {n}")
+    if path.exists():
+        state = dict(np.load(path))
+    else:
+        state = dict(coords=coords, n_a=np.zeros(n, int), n_b=np.zeros(n, int),
+                     n_open=np.zeros(n, int), steps=np.zeros(n, int), stage=np.zeros(n, int))
+    todo = [i for i in range(n) if state["stage"][i] < 1]
+    t0 = time.time()
+    jobs = [(i, coords[i], args.shots2, 9_000_000 + i, args.max_steps) for i in todo]
+    if jobs:
+        with _pool(args) as pool:
+            for k, (i, n_a, n_b, n_open, steps) in enumerate(pool.imap_unordered(_shoot_one, jobs, chunksize=1)):
+                state["n_a"][i], state["n_b"][i], state["n_open"][i] = n_a, n_b, n_open
+                state["steps"][i], state["stage"][i] = steps, 1
+                if (k + 1) % 20 == 0 or k + 1 == len(jobs):
+                    np.savez_compressed(path, **state)
+                    print(f"enrich: {k + 1}/{len(jobs)} configurations, {time.time() - t0:.0f} s", flush=True)
+    q = state["n_b"] / np.maximum(state["n_a"] + state["n_b"], 1)
+    print(f"enrich: {n} configurations, {int(state['steps'].sum())} MD steps; "
+          f"q in (0.05, 0.95): {int(((q > 0.05) & (q < 0.95)).sum())}")
+    del first
+
+
+def _load_reference(out):
+    """First-pass reference plus the enriched batch, if present."""
+    parts = [np.load(out / "reference.npz")]
+    if (out / "reference_enriched.npz").exists():
+        parts.append(np.load(out / "reference_enriched.npz"))
+    return {k: np.concatenate([p[k] for p in parts]) for k in ("coords", "n_a", "n_b", "n_open", "steps")}
+
+
 # ---- stage: swarms -------------------------------------------------------------------------
 
 def _swarm_chunk(job):
@@ -252,7 +307,7 @@ def stage_analyze(args):
 
     out = args.out
     disc = np.load(out / "discover.npz")
-    ref = np.load(out / "reference.npz")
+    ref = _load_reference(out)
     committed = ref["n_a"] + ref["n_b"]
     ok = committed >= 10
     q_ref = (ref["n_b"] / np.maximum(committed, 1))[ok]
@@ -356,7 +411,7 @@ def stage_analyze(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("stage", choices=["discover", "reference", "swarms", "analyze"])
+    parser.add_argument("stage", choices=["discover", "reference", "enrich", "swarms", "analyze"])
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--psf", default=None, help="CHARMM PSF (default: bundled CHARMM36 stand-in)")
@@ -366,13 +421,16 @@ def main():
     parser.add_argument("--configs", type=int, default=300, help="held-out configurations to shoot from")
     parser.add_argument("--shots1", type=int, default=20)
     parser.add_argument("--shots2", type=int, default=100)
+    parser.add_argument("--enrich", type=int, default=150, help="extra held-out configurations (enrich stage)")
+    parser.add_argument("--phi-window", type=float, nargs=2, default=(90.0, 165.0),
+                        help="phi range (degrees) the enrich stage draws from")
     parser.add_argument("--max-steps", type=int, default=30_000, help="per shot")
     parser.add_argument("--starts", type=int, default=400, help="fixed starts for the lag scan")
     parser.add_argument("--models", type=int, default=4, help="ensemble size")
     parser.add_argument("--train-steps", type=int, default=10_000)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    {"discover": stage_discover, "reference": stage_reference,
+    {"discover": stage_discover, "reference": stage_reference, "enrich": stage_enrich,
      "swarms": stage_swarms, "analyze": stage_analyze}[args.stage](args)
 
 
