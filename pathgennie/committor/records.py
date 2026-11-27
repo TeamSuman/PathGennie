@@ -268,6 +268,7 @@ def run_swarms(
     cv_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     seed: Optional[int] = None,
     executor=None,
+    check_every: Optional[int] = None,
 ) -> SwarmRecorder:
     """Launch a swarm from each of ``handles`` and record it (no selection).
 
@@ -276,6 +277,14 @@ def run_swarms(
     adaptive-sampling run flagged, or at points stratified in the current
     committor estimate. ``handles`` are left untouched; trial handles are
     released.
+
+    ``check_every`` stops a trial as soon as it is found inside a basin, checking
+    every that many steps (the recorder must have ``basins``). The committor
+    relation is for the process *stopped* at basin entry; a trial that is only
+    inspected at its end can pass through a basin and leave again, and is then
+    recorded as uncommitted. Use it whenever ``n_steps`` is not short compared
+    with the time spent inside the smaller basin. The steps actually integrated
+    are accumulated in ``recorder.attrs["md_steps"]``.
     """
     from ..core.box import frame_coords
     from ..core.parallel import SerialExecutor
@@ -289,16 +298,26 @@ def run_swarms(
         seeds = [int(rng.integers(1, 2_147_483_647)) for _ in range(n_trials)]
 
         def worker(trial: int, device):
-            clone = engine.clone_anchor(start)
-            seg = engine.run_segment(clone, n_steps, randomize_velocities=True,
-                                     seed=seeds[trial], device=device)
-            coords = frame_coords(engine, seg)
-            if seg != clone:
-                engine.release(clone)
-            engine.release(seg)
-            return coords
+            current = engine.clone_anchor(start)
+            done = 0
+            chunk = n_steps if not check_every else int(check_every)
+            while done < n_steps:
+                n = min(chunk, n_steps - done)
+                nxt = engine.run_segment(current, n, randomize_velocities=(done == 0),
+                                         seed=seeds[trial] + done, device=device)
+                if nxt != current:
+                    engine.release(current)
+                current = nxt
+                done += n
+                coords = frame_coords(engine, current)
+                if check_every and recorder._label(coords, cv_of(coords)) != LABEL_NONE:
+                    break
+            engine.release(current)
+            return coords, done
 
-        ends = executor.map(worker, list(range(n_trials)))
+        results = executor.map(worker, list(range(n_trials)))
+        ends = [r[0] for r in results]
+        recorder.attrs["md_steps"] = int(recorder.attrs.get("md_steps", 0)) + sum(r[1] for r in results)
         recorder.record_swarm(
             cycle=index, lag_steps=n_steps,
             start_coords=start_coords, start_cv=cv_of(start_coords),

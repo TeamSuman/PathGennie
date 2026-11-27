@@ -151,10 +151,12 @@ def stage_discover(args):
 def _shoot_one(job):
     from pathgennie.committor import shooting_committor
 
-    index, coords, n_shots, seed, max_steps = job
+    index, coords, n_shots, seed, max_steps = job[:5]
+    refresh = job[5] if len(job) > 5 else None       # lag of the velocity-refreshed chain
     handle = _ENGINE.create_handle(coords)
     res = shooting_committor(_ENGINE, handle, adp.basins(), adp.phi_psi, n_shots=n_shots,
-                             max_steps=max_steps, check_every=20, seed=seed)
+                             max_steps=max_steps, check_every=refresh or 20, seed=seed,
+                             refresh_velocities=refresh is not None)
     _ENGINE.release(handle)
     return index, res.n_a, res.n_b, res.n_open, res.total_steps
 
@@ -264,14 +266,18 @@ def _swarm_chunk(job):
     from pathgennie.committor import SwarmRecorder
     from pathgennie.committor.records import run_swarms
 
-    coords_chunk, lag, seed = job
+    coords_chunk, lag, seed = job[:3]
+    check_every = job[3] if len(job) > 3 else None
     rec = SwarmRecorder(featurize=adp.heavy_atom_distances, basins=adp.basins(), basin_cv=adp.phi_psi)
     handles = [_ENGINE.create_handle(c) for c in coords_chunk]
-    run_swarms(_ENGINE, handles, rec, n_trials=N_TRIALS, n_steps=lag, seed=seed)
+    run_swarms(_ENGINE, handles, rec, n_trials=N_TRIALS, n_steps=lag, seed=seed,
+               cv_fn=adp.phi_psi, check_every=check_every)
     for h in handles:
         _ENGINE.release(h)
     data = rec.dataset()
-    return {name: getattr(data, name) for name in data._FIELDS}
+    out = {name: getattr(data, name) for name in data._FIELDS}
+    out["md_steps"] = int(rec.attrs.get("md_steps", data.total_steps))
+    return out
 
 
 def stage_swarms(args):
@@ -292,11 +298,75 @@ def stage_swarms(args):
                 continue
             t0 = time.time()
             parts = pool.map(_swarm_chunk, [(c, lag, 31 * lag + k) for k, c in enumerate(chunks) if len(c)])
+            for p in parts:
+                p.pop("md_steps")
             data = SwarmDataset.concatenate([SwarmDataset(**p) for p in parts])
             data.save(target)
             print(f"swarms lag {lag:4d} fs: {len(data)} swarms, {data.total_steps} MD steps, "
                   f"endpoints in A/B {int((data.end_label == 0).sum())}/{int((data.end_label == 1).sum())}, "
                   f"{time.time() - t0:.0f} s", flush=True)
+
+
+STOP_LAGS = (200, 500, 1000)             # fs; trials stop on basin entry, checked every 20 fs
+REFRESH_LAGS = (20, 200)                 # fs; velocity-refreshed shooting
+
+
+def stage_stopped(args):
+    """The lag scan again for long lags, with trials stopped at basin entry."""
+    from pathgennie.committor import SwarmDataset
+
+    out = args.out
+    coords = np.load(out / "swarm_starts.npy")
+    chunks = np.array_split(coords, max(args.workers * 4, 1))
+    with _pool(args) as pool:
+        for lag in STOP_LAGS:
+            target = out / f"swarms_stop{lag}.h5"
+            if target.exists():
+                continue
+            t0 = time.time()
+            parts = pool.map(_swarm_chunk, [(c, lag, 57 * lag + k, 20) for k, c in enumerate(chunks) if len(c)])
+            md_steps = sum(p.pop("md_steps") for p in parts)
+            data = SwarmDataset.concatenate([SwarmDataset(**p) for p in parts])
+            data.attrs["md_steps"] = md_steps
+            data.save(target)
+            print(f"stopped swarms, max {lag:4d} fs: {len(data)} swarms, {md_steps} MD steps, "
+                  f"endpoints in A/B {int((data.end_label == 0).sum())}/{int((data.end_label == 1).sum())}, "
+                  f"{time.time() - t0:.0f} s", flush=True)
+
+
+def stage_refreshed(args):
+    """Shooting with velocities redrawn every tau: the committor of the refreshed chain.
+
+    Run at the transition-region configurations of the reference, this is a
+    model-free measurement of how far the fixed point of short-swarm training
+    lies from the physical committor.
+    """
+    out = args.out
+    ref = _load_reference(out)
+    committed = ref["n_a"] + ref["n_b"]
+    q = ref["n_b"] / np.maximum(committed, 1)
+    ts = np.flatnonzero((q > 0.05) & (q < 0.95))
+    rng = np.random.default_rng(99)
+    chosen = np.sort(rng.choice(ts, size=min(args.refresh_configs, ts.size), replace=False))
+    path = out / "refreshed.npz"
+    state = dict(np.load(path)) if path.exists() else dict(index=chosen, q_physical=q[chosen],
+                                                           n_physical=committed[chosen])
+    with _pool(args) as pool:
+        for lag in REFRESH_LAGS:
+            if f"n_b_{lag}" in state:
+                continue
+            t0 = time.time()
+            jobs = [(k, ref["coords"][i], args.refresh_shots, 5_000_000 + 1000 * lag + k,
+                     args.refresh_max_steps, lag) for k, i in enumerate(chosen)]
+            res = sorted(pool.imap_unordered(_shoot_one, jobs, chunksize=1))
+            state[f"n_a_{lag}"] = np.array([r[1] for r in res])
+            state[f"n_b_{lag}"] = np.array([r[2] for r in res])
+            state[f"n_open_{lag}"] = np.array([r[3] for r in res])
+            state[f"steps_{lag}"] = np.array([r[4] for r in res])
+            np.savez_compressed(path, **state)
+            print(f"refreshed every {lag} fs: {len(chosen)} configurations, {int(state[f'steps_{lag}'].sum())} "
+                  f"MD steps, uncommitted shots {int(state[f'n_open_{lag}'].sum())}, {time.time() - t0:.0f} s",
+                  flush=True)
 
 
 # ---- stage: analyze -------------------------------------------------------------------------
@@ -411,7 +481,7 @@ def stage_analyze(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("stage", choices=["discover", "reference", "enrich", "swarms", "analyze"])
+    parser.add_argument("stage", choices=["discover", "reference", "enrich", "swarms", "stopped", "refreshed", "analyze"])
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--psf", default=None, help="CHARMM PSF (default: bundled CHARMM36 stand-in)")
@@ -424,6 +494,9 @@ def main():
     parser.add_argument("--enrich", type=int, default=150, help="extra held-out configurations (enrich stage)")
     parser.add_argument("--phi-window", type=float, nargs=2, default=(90.0, 165.0),
                         help="phi range (degrees) the enrich stage draws from")
+    parser.add_argument("--refresh-configs", type=int, default=24)
+    parser.add_argument("--refresh-shots", type=int, default=40)
+    parser.add_argument("--refresh-max-steps", type=int, default=60_000)
     parser.add_argument("--max-steps", type=int, default=30_000, help="per shot")
     parser.add_argument("--starts", type=int, default=400, help="fixed starts for the lag scan")
     parser.add_argument("--models", type=int, default=4, help="ensemble size")
@@ -431,7 +504,8 @@ def main():
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     {"discover": stage_discover, "reference": stage_reference, "enrich": stage_enrich,
-     "swarms": stage_swarms, "analyze": stage_analyze}[args.stage](args)
+     "swarms": stage_swarms, "stopped": stage_stopped, "refreshed": stage_refreshed,
+     "analyze": stage_analyze}[args.stage](args)
 
 
 if __name__ == "__main__":

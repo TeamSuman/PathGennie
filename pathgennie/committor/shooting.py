@@ -66,8 +66,16 @@ def shooting_committor(
     check_every: int = 10,
     seed: Optional[int] = None,
     executor=None,
+    refresh_velocities: bool = False,
 ) -> ShootingResult:
     """Estimate the committor of the configuration behind ``handle``.
+
+    ``refresh_velocities=True`` redraws Maxwell-Boltzmann velocities at *every*
+    check interval instead of only at the start. That is not the physical
+    committor: it is the committor of the velocity-refreshed chain, which is the
+    fixed point a position-only model converges to when trained on swarms of
+    length ``check_every``. Comparing the two measures, without any model, how
+    much swarms that short distort the committor.
 
     ``handle`` itself is left untouched. If the configuration is already inside
     a basin the result is that basin's value with zero simulation cost.
@@ -98,7 +106,7 @@ def shooting_committor(
                 seg_seed = int(seeds[index, 0]) if chunk == 0 else int(
                     np.random.SeedSequence([int(seeds[index, 1]), chunk]).generate_state(1)[0]
                     % 2_147_483_646) + 1
-                nxt = engine.run_segment(current, n, randomize_velocities=(chunk == 0),
+                nxt = engine.run_segment(current, n, randomize_velocities=(chunk == 0 or refresh_velocities),
                                          seed=seg_seed, device=device)
                 if nxt != current:
                     engine.release(current)
