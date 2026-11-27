@@ -48,6 +48,7 @@ import adp  # noqa: E402
 
 LAGS = (2, 5, 20, 50, 200, 500)          # fs (1 fs time step)
 TAU1, TAU2, N_TRIALS = 20, 40, 16         # discovery runs
+SIGMA = 0.2                               # softmax temperature of the discovery runs
 _ENGINE = None
 _FF = None
 
@@ -85,10 +86,10 @@ def _discover_one(job):
     driver = PathGennieDriver(
         _ENGINE, adp.dihedral_progress(target),
         lambda c: basins.label(adp.phi_psi(c)) == label,
-        sigma=0.5, seed=seed, verbosity=0, swarm_recorder=rec,
+        sigma=SIGMA, seed=seed, verbosity=0, swarm_recorder=rec,
     )
     traj, metrics = driver.run(handle, tau1=TAU1, tau2=TAU2, max_trial=N_TRIALS,
-                               max_cycle=600, save_freq=1)
+                               max_cycle=1500, save_freq=1)
     reached = bool(basins.label(adp.phi_psi(traj[-1])) == label)
     data = rec.dataset()
     for stale in {handle, driver.last_anchor}:
@@ -112,7 +113,11 @@ def stage_discover(args):
         to_a = pool.map(_discover_one, [(900, "A", None)])[0]
         to_b = pool.map(_discover_one, [(901, "B", to_a["final"])])[0]
         if not (to_a["reached"] and to_b["reached"]):
-            raise RuntimeError("could not prepare structures in both basins")
+            raise RuntimeError(
+                "could not prepare structures in both basins: "
+                f"to C7eq reached={to_a['reached']} after {to_a['cycles']} cycles, "
+                f"to C7ax reached={to_b['reached']} after {to_b['cycles']} cycles "
+                f"(ended at phi, psi = {adp.phi_psi(to_b['final']).round(1)})")
         c7eq, c7ax = to_a["final"], to_b["final"]
         jobs = []
         for pool_name, seeds in (("train", range(args.train_runs)),
