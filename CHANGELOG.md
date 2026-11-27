@@ -33,6 +33,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     (`benchmarks/committor_loop_toy.py`), bootstrapped with the x coordinate alone,
     10 of 10 seeds resolve both reaction channels (transition-region RMSE 0.033 median,
     0.054 worst) with about half the MD of fixed-CV discovery plus offline training.
+  - **Alanine dipeptide study** (`examples/committor_alanine_dipeptide/`, OpenMM,
+    CHARMM36 as a stand-in for CHARMM27). `run_swarms(check_every=)` stops trials at
+    basin entry; `shooting_committor(refresh_velocities=True)` measures the committor
+    of the velocity-refreshed chain. Findings: redrawing velocities every 20 fs leaves
+    the committor unchanged within sampling noise; swarms of 2-50 fs nevertheless
+    cannot be learned from; coverage of the transition region dominates accuracy.
+    Discovery swarms plus stopped swarms of up to 1 ps reach transition-region RMSE
+    0.103 against shooting with 3.3x less MD (protocol chosen post hoc; provisional).
 - **Serial trial scheme** (`pathgennie.scheme: serial`). The probe-until-accepted
   cycle of the original PathGennie (0.0.0) is back as an option next to the default
   parallel swarm: samplers are run from the anchor until one beats the record (best
