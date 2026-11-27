@@ -153,6 +153,32 @@ def test_bootstrap_episode_must_leave_its_basin_first(small_loop):
     assert min(both) > 0                                  # boundary data from both basins
 
 
+def test_bootstrap_retries_until_both_basins_have_boundary_data():
+    """An episode can leave its basin on the runner and end without one trial
+    endpoint inside it; bootstrap then launches more instead of failing to train."""
+    counts = []
+    for seed in range(12):
+        _, loop = _loop(seed=seed, n_models=1, train_steps=5)
+        report = loop.bootstrap()
+        n_a, n_b = loop._boundary_counts()
+        assert n_a > 0 and n_b > 0
+        counts.append(report.end_in_a + report.end_in_b + report.unfinished)
+    assert min(counts) == 2                                # the usual case: one episode each
+
+
+def test_bootstrap_gives_up_with_a_clear_error():
+    # A tiny "product" high on the potential wall: runs slide off it at once and
+    # no trial ever ends inside it again.
+    engine = ToyLangevinEngine(dt=0.005, kT=1.0)
+    basins = BasinPair(SphereBasin(A, R), SphereBasin([2.3, 2.3], 0.05))
+    far = engine.create_state([2.3, 2.3])
+    loop = CommittorLoop(engine, basins, _xy, _xy, start_a=engine.create_state(A), start_b=far,
+                         bootstrap_progress=lambda target: TargetMetric(_xy, target_cv=A),
+                         config=LoopConfig(bootstrap_retries=1, bootstrap_max_cycles=3, n_models=1))
+    with pytest.raises(RuntimeError, match="trial endpoints"):
+        loop.bootstrap()
+
+
 def test_restart_points_cover_the_committor_range(small_loop):
     _, loop = small_loop
     data = loop.recorder.dataset()

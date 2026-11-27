@@ -52,6 +52,7 @@ class LoopConfig:
     max_cycles: int = 60            # per episode; an episode also ends on basin entry
     bootstrap_episodes: int = 1     # per basin
     bootstrap_max_cycles: int = 200
+    bootstrap_retries: int = 10     # extra episodes per basin while it lacks boundary data
     bootstrap_sigma: float = 0.5    # softmax temperature of the bootstrap runs
     sigma: float = 1.0              # Boltzmann temperature of committor steering (1 = Doob weights)
     floor: float = 1e-3             # committor regularisation, see CommittorProgress
@@ -187,16 +188,50 @@ class CommittorLoop:
         return report
 
     # -- stages ------------------------------------------------------------------
+    def _boundary_counts(self) -> tuple:
+        """Trial endpoints in A and in B among swarms that can be trained on."""
+        data = self.recorder.dataset()
+        usable = (data.start_label == LABEL_NONE)[:, None] & data.mask
+        return (int(((data.end_label == 0) & usable).sum()),
+                int(((data.end_label == 1) & usable).sum()))
+
     def bootstrap(self) -> RoundReport:
-        """Episodes from each basin with the geometric progress variable, then a first fit."""
+        """Episodes from each basin with the geometric progress variable, then a first fit.
+
+        A committor needs boundary data from both basins. One episode per basin
+        usually provides it (the trials of the first swarms outside a basin fall
+        back into it), but not always: the runner can carry the anchor straight
+        out, and the episode can end without a single trial endpoint inside its
+        own basin. So after the requested episodes, further ones are launched
+        from whichever basin is still missing, up to ``bootstrap_retries`` times.
+        """
         cfg = self.config
         ends = []
+
+        def episode(start, target):
+            ends.append(self._episode(
+                self.engine.clone_anchor(start), self.bootstrap_progress(target),
+                selection="softmax", sigma=cfg.bootstrap_sigma,
+                max_cycles=cfg.bootstrap_max_cycles))
+
         for _ in range(cfg.bootstrap_episodes):
-            for start, target in ((self.start_a, "B"), (self.start_b, "A")):
-                ends.append(self._episode(
-                    self.engine.clone_anchor(start), self.bootstrap_progress(target),
-                    selection="softmax", sigma=cfg.bootstrap_sigma,
-                    max_cycles=cfg.bootstrap_max_cycles))
+            episode(self.start_a, "B")
+            episode(self.start_b, "A")
+        for _ in range(cfg.bootstrap_retries):
+            n_a, n_b = self._boundary_counts()
+            if n_a and n_b:
+                break
+            if not n_a:
+                episode(self.start_a, "B")
+            if not n_b:
+                episode(self.start_b, "A")
+        else:
+            n_a, n_b = self._boundary_counts()
+            if not (n_a and n_b):
+                raise RuntimeError(
+                    f"bootstrap found {n_a} trial endpoints in A and {n_b} in B after "
+                    f"{cfg.bootstrap_retries} extra episodes per basin. Check the basin "
+                    "definitions (too small to be re-entered?) and the swarm length.")
         self._train()
         return self._report(ends)
 
