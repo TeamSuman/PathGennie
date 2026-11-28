@@ -147,18 +147,47 @@ def test_scores_report_transition_region_separately():
     assert scores["n_transition"] == 3
 
 
-def test_early_stopping_uses_a_held_out_split(train_data):
-    plain = train_committor(train_data, steps=1500, seed=0)
-    stopped = train_committor(train_data, steps=1500, seed=0, val_fraction=0.2, patience=3)
+def _fully_committed(data):
+    return ((data.end_label >= 0) | ~data.mask).all(axis=1) & (data.start_label == LABEL_NONE)
+
+
+@pytest.fixture(scope="module")
+def committed_data(train_data):
+    """Selection-free swarms run to commitment at configurations the discovery runs visited."""
+    from pathgennie.committor.records import run_swarms
+
+    engine = ToyLangevinEngine(dt=0.005, kT=1.0)
+    starts = train_data.starts[train_data.start_label == LABEL_NONE][::5][:180]
+    handles = [engine.create_state(p) for p in starts]
+    rec = SwarmRecorder(featurize=_xy, basins=BASINS)
+    run_swarms(engine, handles, rec, n_trials=6, n_steps=4000, cv_fn=_xy, seed=1, check_every=5)
+    return rec.dataset()
+
+
+def test_early_stopping_scores_committed_held_out_swarms(committed_data, reference):
+    assert _fully_committed(committed_data).mean() > 0.9
+    plain = train_committor(committed_data, steps=1500, seed=0)
+    stopped = train_committor(committed_data, steps=1500, seed=0, val_fraction=0.3, patience=3)
     assert plain.val_history == []
-    assert len(stopped.val_history) >= 1
+    assert len(stopped.val_history) == len(stopped.history) >= 1
     assert len(stopped.history) <= len(plain.history)            # may stop before `steps`
-    assert len(stopped.val_history) == len(stopped.history)      # one evaluation per 100 steps
     # the returned weights are those of the best held-out evaluation, not the last
     best = int(np.argmin(stopped.val_history))
     assert len(stopped.val_history) - 1 - best <= 3
-    points = np.array([[0.0, 0.0], [-1.0, 0.3], [0.9, 0.2]])
-    assert np.all((stopped.predict(points) > 0) & (stopped.predict(points) < 1))
+    # The score is a Monte-Carlo comparison, so it must *fall* as the model learns.
+    # (The held-out self-consistency loss does the opposite: it is lowest for the
+    # untrained, nearly constant network, and stopping on it returns that network.)
+    assert best >= 2
+    assert stopped.val_history[best] < 0.8 * stopped.val_history[0]
+    # ...and the early-stopped model is a real committor, not the initial network.
+    scores = committor_scores(stopped.predict(committed_data.starts), reference(committed_data.starts))
+    assert scores["pearson"] > 0.9
+
+
+def test_validation_is_skipped_without_committed_held_out_swarms(train_data):
+    open_only = train_data.subset(~_fully_committed(train_data))
+    model = train_committor(open_only, steps=200, val_fraction=0.3)
+    assert model.val_history == [] and len(model.history) == 2    # trained for all steps
 
 
 def test_validation_split_is_skipped_for_tiny_datasets(train_data):

@@ -7,16 +7,25 @@ variable and scored each round against the shooting reference of the M2 study
 (``m2_study.py`` stages ``discover``, ``reference``, ``enrich``). The reference is
 read for reporting only; nothing in the loop sees it.
 
-Protocol and gate were fixed before the first run and are not to be tuned
-against the reference:
+Protocol and gate are fixed before a run and are not tuned against the reference.
+
+Protocol v2 (current):
 
   steering   tau1 = 10 fs, tau2 = 40 fs, 8 trials; 16 episodes per round of at
              most 80 cycles; Boltzmann selection at sigma = 0.3
   learning   150 configurations per round, spread over the committor estimate;
-             8 trials each of at most 300 fs, stopped at basin entry (20 fs checks)
+             4 trials each, run until a basin is entered (20 fs checks, 3 ps cap)
   model      ensemble of 4 networks (128, 128); 6000 steps, then 2000 per round;
              15 % of the swarms held out for early stopping
   rounds     6
+
+Protocol v1 (``--protocol v1``) capped learning trials at 300 fs with 8 trials
+per start. It failed the gate in three of three seeds (RMSE(TS) 0.29-0.38). Two
+flaws, both visible in the training data alone: a shot from the transition
+region needs about 865 steps to commit, so 19-55 % of the learning starts ended
+with no committed trial and carried no boundary information; and early stopping
+on the held-out self-consistency loss restored nearly untrained weights (fixed
+in the trainer, see ``train_committor``). v2 changes the learning swarms only.
 
   gate       after the last round, in every seed: r > 0.9 and RMSE(TS) < 0.15
              against shooting, with less MD than the best M2 protocol
@@ -46,9 +55,10 @@ import m2_study  # noqa: E402
 PROTOCOL = dict(
     tau1=10, tau2=40, n_trials=8, episodes_per_round=16, max_cycles=80, sigma=0.3,
     bootstrap_max_cycles=300, bootstrap_sigma=0.2,
-    learn_starts=150, learn_trials=8, learn_steps=300, learn_check_every=20,
+    learn_starts=150, learn_trials=4, learn_steps=3000, learn_check_every=20,
     n_models=4, hidden=(128, 128), train_steps=6000, refresh_steps=2000, val_fraction=0.15,
 )
+PROTOCOL_V1 = dict(PROTOCOL, learn_trials=8, learn_steps=300)
 ROUNDS = 6
 M2_BEST_MD_STEPS = 6_058_420
 
@@ -68,6 +78,7 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--rounds", type=int, default=ROUNDS)
+    parser.add_argument("--protocol", choices=["v1", "v2"], default="v2")
     parser.add_argument("--smoke", action="store_true", help="tiny settings, to check the plumbing only")
     parser.add_argument("--psf", default=None)
     parser.add_argument("--params", nargs="*", default=None)
@@ -81,7 +92,7 @@ def main():
     from pathgennie.committor.train import committor_scores
 
     torch.set_num_threads(1)
-    protocol = dict(PROTOCOL)
+    protocol = dict(PROTOCOL if args.protocol == "v2" else PROTOCOL_V1)
     if args.smoke:
         protocol.update(episodes_per_round=2, max_cycles=10, bootstrap_max_cycles=40, learn_starts=6,
                         learn_steps=60, train_steps=300, refresh_steps=100, n_models=2)
@@ -115,7 +126,7 @@ def main():
               f"r {row['pearson']:.3f} RMSE {row['rmse']:.3f} | r(TS) {row['pearson_ts']:.3f} "
               f"RMSE(TS) {row['rmse_ts']:.3f} | {row['wall_s']} s", flush=True)
         with open(args.out / f"m3b_seed{args.seed}.json", "w") as fh:
-            json.dump(dict(force_field=label, seed=args.seed, protocol=protocol, smoke=args.smoke,
+            json.dump(dict(force_field=label, seed=args.seed, protocol_version=args.protocol, protocol=protocol, smoke=args.smoke,
                            curve=curve), fh, indent=2)
         return row
 

@@ -155,14 +155,22 @@ def train_committor(
         Raise if no endpoint reached A, or none reached B. Without both, the
         relation has no anchor on one side and the fit is not a committor.
     val_fraction, patience:
-        Hold out this fraction of the swarms and evaluate the self-consistency
-        loss on them every 100 steps; return the weights with the lowest held-out
-        loss and stop after ``patience`` evaluations without improvement. Without
-        it the network is trained for ``steps`` regardless, and with enough steps
-        it interpolates its (noisy) targets exactly. The held-out loss is recorded
-        in ``model.val_history``. Note what this does *not* catch: held-out swarms
-        come from the same starts distribution, so a region the data do not cover
-        stays invisible.
+        Hold out this fraction of the swarms; every 100 steps score the model on
+        the held-out swarms **whose trials all committed**, against the fraction
+        that reached B. Return the weights with the lowest score and stop after
+        ``patience`` evaluations without improvement. Without it the network is
+        trained for ``steps`` regardless, and with enough steps it interpolates
+        its (noisy) targets exactly. The score is recorded in ``model.val_history``.
+
+        Only fully committed swarms are used because their target is a plain
+        Monte-Carlo estimate of the committor that does not involve the model. The
+        self-consistency loss itself must not be used for this: a nearly constant
+        function satisfies it almost everywhere, so its held-out value is lowest
+        for an untrained network and "early stopping" would hand that back. If
+        fewer than ten held-out swarms are fully committed, validation is skipped.
+
+        What this does *not* catch: held-out swarms come from the same
+        distribution of starts, so a region the data do not cover stays invisible.
     """
     use = dataset.start_label == LABEL_NONE
     if not use.any():
@@ -213,6 +221,13 @@ def train_committor(
         order = torch.as_tensor(rng.permutation(n_all))
         n_val = max(1, int(round(val_fraction * n_all)))
         val_idx, train_idx = order[:n_val], order[n_val:]
+        # Held-out swarms with every trial committed, and their Monte-Carlo committor.
+        full = ((committed | (m == 0)).all(dim=1) & (m.sum(dim=1) > 0))[val_idx]
+        if int(full.sum()) >= 10:
+            val_idx = val_idx[full]
+            val_target = (boundary[val_idx] * m[val_idx]).sum(dim=1) / m[val_idx].sum(dim=1)
+        else:
+            val_idx, train_idx = None, torch.arange(n_all)
     else:
         train_idx = torch.arange(n_all)
     n = int(train_idx.numel())
@@ -244,7 +259,7 @@ def train_committor(
             running = 0.0
             if val_idx is not None:
                 with torch.no_grad():
-                    val = float(swarm_loss(target_net, val_idx))
+                    val = float(((torch.sigmoid(target_net(x0[val_idx])) - val_target) ** 2).mean())
                 val_history.append(val)
                 if val < best_val - 1e-9:
                     best_val, stale = val, 0
