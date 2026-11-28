@@ -231,3 +231,29 @@ def test_closed_loop_learns_committor_from_a_poor_cv():
         sel = ts & channel
         assert np.sqrt(np.mean((pred[sel] - exact[sel]) ** 2)) < 0.15
     assert loop.md_steps < 250_000
+
+
+def test_learning_swarms_are_recorded_stopped_and_costed():
+    """Each round can add longer, selection-free swarms stopped at basin entry;
+    their cost is the steps actually integrated, not the nominal maximum."""
+    engine, loop = _loop(n_models=2, train_steps=300, refresh_steps=100, episodes_per_round=4,
+                         learn_starts=6, learn_trials=5, learn_steps=400, learn_check_every=5)
+    loop.run(1)
+    data = loop.recorder.dataset()
+    learn = sorted(loop._learn_rows)
+    assert len(learn) == 12                                # bootstrap + one round
+    assert (data.lag_steps[learn] == 400).all()
+    assert (data.mask[learn].sum(axis=1) == 5).all()
+    assert not data.chosen[learn].any()                    # no selection in a learning swarm
+    assert (data.start_label[learn] == LABEL_NONE).all()   # launched outside the basins
+    assert len(loop.recorder.coords_starts) == len(data)   # still aligned: they can be restart points
+    # stopped trials commit far more often than the 20-step steering trials
+    steer = [i for i in range(len(data)) if i not in loop._learn_rows and data.start_label[i] == LABEL_NONE]
+    committed = lambda rows: (data.end_label[rows][data.mask[rows]] >= 0).mean()  # noqa: E731
+    assert committed(learn) > committed(steer)
+    # cost: steering trials at their length, runners, learning trials at the steps used
+    steering = sum(int(data.mask[i].sum()) * int(data.lag_steps[i]) for i in range(len(data)) if i not in loop._learn_rows)
+    used = loop.recorder.attrs["md_steps"]
+    assert 0 < used < 12 * 5 * 400
+    assert loop.md_steps == steering + used + len(loop.recorder.runner_starts) * loop.config.tau2
+    assert set(engine._cache) == {loop.start_a, loop.start_b}

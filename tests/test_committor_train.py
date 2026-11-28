@@ -145,3 +145,23 @@ def test_scores_report_transition_region_separately():
     assert scores["pearson"] > 0.8             # the easy points hide the failure
     assert scores["pearson_transition"] == pytest.approx(-1.0)
     assert scores["n_transition"] == 3
+
+
+def test_early_stopping_uses_a_held_out_split(train_data):
+    plain = train_committor(train_data, steps=1500, seed=0)
+    stopped = train_committor(train_data, steps=1500, seed=0, val_fraction=0.2, patience=3)
+    assert plain.val_history == []
+    assert len(stopped.val_history) >= 1
+    assert len(stopped.history) <= len(plain.history)            # may stop before `steps`
+    assert len(stopped.val_history) == len(stopped.history)      # one evaluation per 100 steps
+    # the returned weights are those of the best held-out evaluation, not the last
+    best = int(np.argmin(stopped.val_history))
+    assert len(stopped.val_history) - 1 - best <= 3
+    points = np.array([[0.0, 0.0], [-1.0, 0.3], [0.9, 0.2]])
+    assert np.all((stopped.predict(points) > 0) & (stopped.predict(points) < 1))
+
+
+def test_validation_split_is_skipped_for_tiny_datasets(train_data):
+    tiny = train_data.subset(np.flatnonzero(train_data.start_label == LABEL_NONE)[:12])
+    model = train_committor(tiny, steps=100, val_fraction=0.5, require_both_basins=False)
+    assert model.val_history == []

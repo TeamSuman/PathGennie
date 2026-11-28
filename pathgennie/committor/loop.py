@@ -12,6 +12,15 @@ One *round* is
    committor at their endpoints;
 3. retrain the committor (warm start) on all swarms recorded so far.
 
+Optionally (``learn_starts > 0``) each round also launches *learning swarms*:
+longer, selection-free swarms stopped at basin entry, at configurations spread
+over the committor estimate. On a molecular system these, not the short
+steering swarms, carry the information the committor is learned from.
+
+Selection never biases the training data -- every trial of every swarm is an
+unbiased continuation of its start, whatever the selection temperature -- so
+``sigma`` can be chosen for efficient steering alone.
+
 Before the first model exists, ``bootstrap`` runs episodes from A and from B
 with a user-supplied progress variable. That CV may be poor: it only has to
 move the system away from each basin. Each bootstrap run labels its own side
@@ -61,6 +70,17 @@ class LoopConfig:
     train_steps: int = 2500         # first fit
     refresh_steps: int = 800        # warm-started refits
     explore_fraction: float = 0.25  # share of restarts drawn where the ensemble disagrees most
+    # Learning swarms: selection-free, stopped at basin entry, launched each round at
+    # configurations spread over the committor estimate. The short swarms that steer
+    # an episode carry too little signal to learn from on a molecular system (a
+    # trajectory needs hundreds of them to commit); these carry the boundary
+    # information. learn_starts = 0 disables them (enough for the overdamped toy).
+    learn_starts: int = 0           # configurations per round
+    learn_trials: int = 8
+    learn_steps: int = 300          # maximum length of a learning trial
+    learn_check_every: int = 20     # basin-entry check interval
+    val_fraction: float = 0.0       # held-out swarms for early stopping (0 = off)
+    weight_decay: float = 0.0
     q_bins: int = 10
     seed: int = 0
 
@@ -118,13 +138,16 @@ class CommittorLoop:
         self.model = None
         self.reports: List[RoundReport] = []
         self._round = 0
+        self._learn_rows: set = set()       # recorder rows that are learning swarms
 
     # -- bookkeeping -------------------------------------------------------------
     @property
     def md_steps(self) -> int:
         """Integrator steps spent so far, trials *and* runners."""
-        trials = sum(r["ends"].shape[0] * r["lag_steps"] for r in self.recorder._rows)
-        return int(trials + len(self.recorder.runner_starts) * self.config.tau2)
+        trials = sum(r["ends"].shape[0] * r["lag_steps"]
+                     for i, r in enumerate(self.recorder._rows) if i not in self._learn_rows)
+        learning = int(self.recorder.attrs.get("md_steps", 0))      # steps actually integrated
+        return int(trials + learning + len(self.recorder.runner_starts) * self.config.tau2)
 
     def _basin_entry(self) -> Callable:
         """Episode stop criterion: a basin is *entered*.
@@ -172,6 +195,7 @@ class CommittorLoop:
             self.recorder.dataset(), cfg.n_models, seed=cfg.seed,
             init=self.model, hidden=cfg.hidden,
             steps=cfg.train_steps if first else cfg.refresh_steps,
+            val_fraction=cfg.val_fraction, weight_decay=cfg.weight_decay,
         )
 
     def _report(self, ends: List[int]) -> RoundReport:
@@ -233,6 +257,8 @@ class CommittorLoop:
                     f"{cfg.bootstrap_retries} extra episodes per basin. Check the basin "
                     "definitions (too small to be re-entered?) and the swarm length.")
         self._train()
+        if self.learning_swarms():      # placed with the first, crude model; then refit
+            self._train()
         return self._report(ends)
 
     def restart_points(self, n: int) -> List[int]:
@@ -265,6 +291,24 @@ class CommittorLoop:
             picks.append(int(candidates[self.rng.choice(members)]))
         return picks
 
+    def learning_swarms(self) -> int:
+        """Launch stopped, selection-free swarms at restart points; return how many."""
+        from .records import run_swarms
+
+        cfg = self.config
+        if cfg.learn_starts <= 0:
+            return 0
+        before = len(self.recorder)
+        handles = [create_handle(self.engine, self.recorder.coords_starts[i])
+                   for i in self.restart_points(cfg.learn_starts)]
+        run_swarms(self.engine, handles, self.recorder, n_trials=cfg.learn_trials,
+                   n_steps=cfg.learn_steps, cv_fn=self.cv_fn, seed=self._seed(),
+                   executor=self.executor, check_every=cfg.learn_check_every)
+        for handle in handles:
+            self.engine.release(handle)
+        self._learn_rows.update(range(before, len(self.recorder)))
+        return len(self.recorder) - before
+
     def round(self) -> RoundReport:
         """One round of committor-steered episodes followed by a warm-started refit."""
         if self.model is None:
@@ -280,6 +324,7 @@ class CommittorLoop:
             ends.append(self._episode(
                 create_handle(self.engine, coords), progress,
                 selection="boltzmann", sigma=cfg.sigma, max_cycles=cfg.max_cycles))
+        self.learning_swarms()
         self._train()
         return self._report(ends)
 

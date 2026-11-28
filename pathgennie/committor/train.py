@@ -132,6 +132,8 @@ def train_committor(
     seed: int = 0,
     init: Optional[CommittorModel] = None,
     require_both_basins: bool = True,
+    val_fraction: float = 0.0,
+    patience: int = 10,
 ) -> CommittorModel:
     """Fit a committor network to swarm records.
 
@@ -152,6 +154,15 @@ def train_committor(
     require_both_basins:
         Raise if no endpoint reached A, or none reached B. Without both, the
         relation has no anchor on one side and the fit is not a committor.
+    val_fraction, patience:
+        Hold out this fraction of the swarms and evaluate the self-consistency
+        loss on them every 100 steps; return the weights with the lowest held-out
+        loss and stop after ``patience`` evaluations without improvement. Without
+        it the network is trained for ``steps`` regardless, and with enough steps
+        it interpolates its (noisy) targets exactly. The held-out loss is recorded
+        in ``model.val_history``. Note what this does *not* catch: held-out swarms
+        come from the same starts distribution, so a region the data do not cover
+        stays invisible.
     """
     use = dataset.start_label == LABEL_NONE
     if not use.any():
@@ -196,17 +207,31 @@ def train_committor(
     committed = (lab != LABEL_NONE)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-    n = x0.shape[0]
-    batch_size = min(int(batch_size), n)
-    history: List[float] = []
-    running = 0.0
-    for step in range(int(steps)):
-        idx = torch.as_tensor(rng.choice(n, size=batch_size, replace=False))
+    n_all = x0.shape[0]
+    val_idx = None
+    if val_fraction > 0.0 and n_all >= 20:
+        order = torch.as_tensor(rng.permutation(n_all))
+        n_val = max(1, int(round(val_fraction * n_all)))
+        val_idx, train_idx = order[:n_val], order[n_val:]
+    else:
+        train_idx = torch.arange(n_all)
+    n = int(train_idx.numel())
+
+    def swarm_loss(model, idx):
         with torch.no_grad():
             q_end = torch.sigmoid(target_net(x1[idx]))
             q_end = torch.where(committed[idx], boundary[idx], q_end)
             target = (q_end * m[idx]).sum(dim=1) / m[idx].sum(dim=1)
-        loss = ((torch.sigmoid(net(x0[idx])) - target) ** 2).mean()
+        return ((torch.sigmoid(model(x0[idx])) - target) ** 2).mean()
+
+    best_val, best_state, stale = float("inf"), None, 0
+    val_history: List[float] = []
+    batch_size = min(int(batch_size), n)
+    history: List[float] = []
+    running = 0.0
+    for step in range(int(steps)):
+        idx = train_idx[torch.as_tensor(rng.choice(n, size=batch_size, replace=False))]
+        loss = swarm_loss(net, idx)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -217,11 +242,27 @@ def train_committor(
         if (step + 1) % 100 == 0:
             history.append(running / 100.0)
             running = 0.0
+            if val_idx is not None:
+                with torch.no_grad():
+                    val = float(swarm_loss(target_net, val_idx))
+                val_history.append(val)
+                if val < best_val - 1e-9:
+                    best_val, stale = val, 0
+                    best_state = copy.deepcopy(target_net.state_dict())
+                else:
+                    stale += 1
+                    if stale >= patience:
+                        break
 
-    # The slowly moving average is the smoother estimate; return that one.
+    # The slowly moving average is the smoother estimate; return that one (at its
+    # best held-out loss when a validation split was used).
+    if best_state is not None:
+        target_net.load_state_dict(best_state)
     target_net.eval()
-    return CommittorModel(net=target_net, feature_mean=mean, feature_std=std,
-                          history=(list(init.history) if init is not None else []) + history)
+    model = CommittorModel(net=target_net, feature_mean=mean, feature_std=std,
+                           history=(list(init.history) if init is not None else []) + history)
+    model.val_history = val_history
+    return model
 
 
 class CommittorEnsemble:
